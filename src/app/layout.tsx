@@ -18,7 +18,7 @@ const mono = Martian_Mono({
   preload: false,
 });
 
-const SITE_URL = "https://nova-ai-3d.vercel.app";
+const SITE_URL = "https://nova-ai-3d-xi.vercel.app";
 const TITLE = "Nova — a mind that listens before it speaks";
 const DESCRIPTION =
   "Nova reads your team's docs, meetings and tickets and answers in seconds, with the source attached. Talk to the particle orb and see it think.";

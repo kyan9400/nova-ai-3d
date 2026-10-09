@@ -7,7 +7,7 @@ works, trust, pricing tiers, FAQ and contact.
 
 Concept project — fictional brand.
 
-**Live:** https://nova-ai-3d.vercel.app
+**Live:** https://nova-ai-3d-xi.vercel.app
 
 ## Tech stack
 - Next.js 16 (App Router, TypeScript strict, `src/` dir), React 19
