@@ -4,25 +4,39 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useState } from "react";
 import type { PerspectiveCamera } from "three";
 import { orbSignal } from "@/lib/orb-signal";
-import { detectQuality, TIERS } from "@/lib/quality";
-import { AdaptiveDpr, CAMERA, OrbEngine } from "./engine";
+import { TIERS, type Tier } from "@/lib/quality";
+import { AdaptiveDpr, CAMERA, OrbEngine, yieldToMain } from "./engine";
 
 type Props = {
+  /** decided by Stage (detectQuality) before this chunk was even requested */
+  tier: Tier;
   reduced: boolean;
   onReady: () => void;
   onFail: () => void;
 };
 
-export default function OrbCanvas({ reduced, onReady, onFail }: Props) {
-  const [quality] = useState(detectQuality);
-
+export default function OrbCanvas({ tier, reduced, onReady, onFail }: Props) {
+  const settings = TIERS[tier];
+  const [cap] = useState(() => Math.min(window.devicePixelRatio || 1, settings.dprCap));
+  // particle attributes are generated in slices that yield to the main thread, before the canvas exists
+  const [engine, setEngine] = useState<OrbEngine | null>(null);
   useEffect(() => {
-    if (!quality.webgl) onFail();
-  }, [quality.webgl, onFail]);
+    let alive = true;
+    let built: OrbEngine | null = null;
+    OrbEngine.create(settings.particles, settings.sparks)
+      .then((e) => {
+        built = e;
+        if (alive) setEngine(e);
+        else e.dispose();
+      })
+      .catch(() => alive && onFail());
+    return () => {
+      alive = false;
+      built?.dispose();
+    };
+  }, [settings.particles, settings.sparks, onFail]);
 
-  if (!quality.webgl) return null;
-  const settings = TIERS[quality.tier];
-  const cap = Math.min(window.devicePixelRatio || 1, settings.dprCap);
+  if (!engine) return null;
 
   return (
     <Canvas
@@ -39,7 +53,7 @@ export default function OrbCanvas({ reduced, onReady, onFail }: Props) {
       }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
-        gl.domElement.dataset.tier = quality.tier;
+        gl.domElement.dataset.tier = tier;
         gl.domElement.addEventListener(
           "webglcontextlost",
           (event) => {
@@ -50,21 +64,19 @@ export default function OrbCanvas({ reduced, onReady, onFail }: Props) {
         );
       }}
     >
-      <Mind particles={settings.particles} sparks={settings.sparks} cap={cap} reduced={reduced} onReady={onReady} />
+      <Mind engine={engine} cap={cap} reduced={reduced} onReady={onReady} />
     </Canvas>
   );
 }
 
 type MindProps = {
-  particles: number;
-  sparks: number;
+  engine: OrbEngine;
   cap: number;
   reduced: boolean;
   onReady: () => void;
 };
 
-function Mind({ particles, sparks, cap, reduced, onReady }: MindProps) {
-  const [engine] = useState(() => new OrbEngine(particles, sparks));
+function Mind({ engine, cap, reduced, onReady }: MindProps) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -96,13 +108,14 @@ function Mind({ particles, sparks, cap, reduced, onReady }: MindProps) {
         }),
       );
     };
-    gl.compileAsync(scene, camera).then(reveal, reveal);
+    // renderer creation was its own long task: yield once before compiling
+    yieldToMain()
+      .then(() => (cancelled ? undefined : gl.compileAsync(scene, camera)))
+      .then(reveal, reveal);
     return () => {
       cancelled = true;
     };
   }, [gl, scene, camera, invalidate, onReady]);
-
-  useEffect(() => () => engine.dispose(), [engine]);
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 1 / 20);

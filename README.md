@@ -47,7 +47,13 @@ weight.
 - Reduced motion is respected by default, with a **Turn on full motion** toggle (nav + footer, remembered;
   `?motion=full|reduced` overrides). Reduced = no autonomous drift/spin; the orb still answers you, then stops.
 - No WebGL or a lost context → the poster stays and the page (including the chat) works fully.
-- First-load JS for `/`: ~179 KB gzip; the three.js chunk (~240 KB gzip) loads lazily after hydration.
+- Software WebGL (SwiftShader, llvmpipe, softpipe, Microsoft Basic Render, Mesa offscreen, or a context that only
+  exists with `failIfMajorPerformanceCaveat` off) → the 3D chunk is never downloaded and the poster stays.
+  `?quality=low|medium|high` still forces the canvas on. The probe is a 1×1 context; three.js is not imported for it.
+- First-load JS for `/`: ~179 KB gzip; the three.js chunk (~240 KB gzip) is requested only after window `load` +
+  `requestIdleCallback` (2.5 s timeout), never during hydration. Particle attributes are generated in slices that
+  yield to the main thread, with one more yield before `compileAsync`.
+- The poster SVG is a server component (in the HTML, never hydrated); the hero headline has no intro animation.
 
 ## Run it
 ```bash

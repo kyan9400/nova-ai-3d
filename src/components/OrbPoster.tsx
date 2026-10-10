@@ -1,6 +1,7 @@
 /*
-  Code-drawn poster of the orb. Shown while the 3D chunk loads and warms up,
-  and permanently when WebGL is missing or the context is lost.
+  Code-drawn poster of the orb. A server component: the SVG is in the HTML and never hydrates.
+  Shown while the 3D chunk loads and warms up, and permanently when WebGL is missing, is a software
+  renderer, or the context is lost. Stage hides it (opacity only) via .stage-layer.is-live.
 */
 
 const hash = (n: number) => {
@@ -38,9 +39,9 @@ function buildDots(count: number) {
 
 const DOTS = buildDots(340);
 
-export default function OrbPoster({ hidden }: { hidden: boolean }) {
+export default function OrbPoster() {
   return (
-    <div className={`orb-poster${hidden ? " is-hidden" : ""}`}>
+    <div className="orb-poster">
       <svg viewBox="0 0 400 400" role="presentation" focusable="false">
         <defs>
           <radialGradient id="poster-glow" cx="50%" cy="50%" r="50%">

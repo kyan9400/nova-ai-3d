@@ -410,7 +410,7 @@ main:focus {
   transition: opacity 0.9s ease;
 }
 
-.orb-wrap.is-live {
+.stage-layer.is-live .orb-wrap {
   opacity: 1;
 }
 
@@ -434,7 +434,7 @@ main:focus {
   height: 100%;
 }
 
-.orb-poster.is-hidden {
+.stage-layer.is-live .orb-poster {
   opacity: 0;
 }
 

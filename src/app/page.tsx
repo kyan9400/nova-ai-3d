@@ -2,6 +2,7 @@ import Stage from "@/components/Stage";
 import ChatDemo from "@/components/ChatDemo";
 import Pricing from "@/components/Pricing";
 import MotionToggle from "@/components/MotionToggle";
+import OrbPoster from "@/components/OrbPoster";
 
 const CAPABILITIES = [
   {
@@ -94,7 +95,7 @@ export default function Home() {
       </header>
 
       <main id="main" tabIndex={-1}>
-        <Stage>
+        <Stage poster={<OrbPoster />}>
           <section id="top" className="hero" aria-labelledby="hero-title">
             <div className="container hero__inner">
               <p className="eyebrow">Nova / assistant for teams</p>

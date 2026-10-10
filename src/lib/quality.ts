@@ -1,8 +1,10 @@
 /*
-  Quality tier, decided BEFORE the canvas is created.
-  Hardware hints first, then the GPU name from a throwaway WebGL2 context:
-  software renderers -> low, integrated / mobile GPUs and touch devices -> at most medium.
+  Quality tier, decided BEFORE the canvas is created (and before three.js is even downloaded).
+  Hardware hints first, then the GPU name from a throwaway 1x1 WebGL2 context:
+  software renderers -> no 3D at all (the poster stays) unless ?quality= forces it on, in which case low;
+  integrated / mobile GPUs and touch devices -> at most medium.
   ?quality=low|medium|high overrides everything.
+  This module never imports three, so the probe costs a few milliseconds.
 */
 
 export type Tier = "low" | "medium" | "high";
@@ -16,27 +18,59 @@ export const TIERS: Record<Tier, { particles: number; sparks: number; dprCap: nu
 const ORDER: Tier[] = ["low", "medium", "high"];
 const lower = (a: Tier, b: Tier): Tier => (ORDER.indexOf(a) < ORDER.indexOf(b) ? a : b);
 
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render|mesa offscreen/i;
+
 function gpuName(gl: WebGL2RenderingContext) {
-  const name = String(gl.getParameter(gl.RENDERER) || "");
-  if (!/^webkit/i.test(name)) return name;
   const info = gl.getExtension("WEBGL_debug_renderer_info");
-  return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || name) : name;
+  const unmasked = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || "") : "";
+  return unmasked || String(gl.getParameter(gl.RENDERER) || "");
 }
 
-export function detectQuality(): { webgl: boolean; tier: Tier; gpu: string } {
-  let gl: WebGL2RenderingContext | null = null;
+function tinyContext(caveat: boolean): WebGL2RenderingContext | null {
+  // a canvas hands out only one context, so every attempt gets a fresh 1x1 canvas
   try {
-    gl = document.createElement("canvas").getContext("webgl2", { powerPreference: "high-performance" });
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    return canvas.getContext("webgl2", {
+      failIfMajorPerformanceCaveat: caveat,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "high-performance",
+    });
   } catch {
-    gl = null;
+    return null;
   }
-  if (!gl) return { webgl: false, tier: "low", gpu: "" };
+}
+
+export type Quality = {
+  /** WebGL2 works at all */
+  webgl: boolean;
+  /** CPU rasteriser (SwiftShader, llvmpipe, Basic Render...) or only a context with a major performance caveat */
+  software: boolean;
+  /** ?quality= is set */
+  forced: boolean;
+  tier: Tier;
+  gpu: string;
+};
+
+export function detectQuality(): Quality {
+  const q = new URLSearchParams(window.location.search).get("quality");
+  const forced: Tier | null = q === "low" || q === "medium" || q === "high" ? q : null;
+
+  let gl = tinyContext(true);
+  let caveat = false;
+  if (!gl) {
+    gl = tinyContext(false);
+    caveat = !!gl;
+  }
+  if (!gl) return { webgl: false, software: false, forced: !!forced, tier: "low", gpu: "" };
 
   const gpu = gpuName(gl);
   gl.getExtension("WEBGL_lose_context")?.loseContext();
+  const software = caveat || SOFTWARE.test(gpu);
 
-  const forced = new URLSearchParams(window.location.search).get("quality");
-  if (forced === "low" || forced === "medium" || forced === "high") return { webgl: true, tier: forced, gpu };
+  if (forced) return { webgl: true, software, forced: true, tier: forced, gpu };
 
   const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
   const cores = nav.hardwareConcurrency || 4;
@@ -47,9 +81,9 @@ export function detectQuality(): { webgl: boolean; tier: Tier; gpu: string } {
   if (nav.connection?.saveData || cores <= 2 || memory <= 2) tier = "low";
   else if (touch || cores <= 4) tier = "medium";
 
-  if (/swiftshader|llvmpipe|software|basic render/i.test(gpu)) tier = "low";
+  if (software) tier = "low";
   else if (/intel|uhd|iris|mali|adreno|powervr|apple gpu|radeon\(tm\) graphics|radeon graphics|vega/i.test(gpu))
     tier = lower(tier, "medium");
 
-  return { webgl: true, tier, gpu };
+  return { webgl: true, software, forced: false, tier, gpu };
 }

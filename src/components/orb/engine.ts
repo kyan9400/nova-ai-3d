@@ -40,6 +40,56 @@ const smoothstep = (a: number, b: number, x: number) => {
 };
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 
+/** Let the browser handle input and paint between heavy steps (keeps each task short). */
+export const yieldToMain = () =>
+  new Promise<void>((resolve) => {
+    const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+    if (s?.yield) s.yield().then(resolve, () => setTimeout(resolve, 0));
+    else setTimeout(resolve, 0);
+  });
+
+type Attributes = { pos: Float32Array; seed: Float32Array; orbit: Float32Array; twinkle: Float32Array };
+
+const SLICE = 8000;
+
+/** Shell + spark attributes, generated in slices with a yield between them. */
+async function buildAttributes(particles: number, sparks: number): Promise<Attributes> {
+  // --- shell: Fibonacci sphere home points + 4 random seeds per particle
+  const pos = new Float32Array(particles * 3);
+  const seed = new Float32Array(particles * 4);
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let start = 0; start < particles; start += SLICE) {
+    const end = Math.min(particles, start + SLICE);
+    for (let i = start; i < end; i++) {
+      const y = 1 - ((i + 0.5) / particles) * 2;
+      const r = Math.sqrt(1 - y * y);
+      const th = golden * i;
+      pos[i * 3] = Math.cos(th) * r;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = Math.sin(th) * r;
+      seed[i * 4] = hash(i * 1.13);
+      seed[i * 4 + 1] = hash(i * 2.71 + 3.1);
+      seed[i * 4 + 2] = hash(i * 0.57 + 9.4);
+      seed[i * 4 + 3] = Math.pow(hash(i * 3.33 + 1.7), 2.2);
+    }
+    await yieldToMain();
+  }
+
+  // --- sparks: little satellites on crossing orbits
+  const orbit = new Float32Array(sparks * 4);
+  const twinkle = new Float32Array(sparks);
+  for (let i = 0; i < sparks; i++) {
+    const ring = i % 5;
+    orbit[i * 4] = 1.38 + ring * 0.09 + hash(i * 7.1) * 0.12;
+    orbit[i * 4 + 1] = (0.6 + hash(i * 4.4) * 0.8) * (ring % 2 ? -1 : 1);
+    orbit[i * 4 + 2] = hash(i * 9.9) * Math.PI * 2;
+    orbit[i * 4 + 3] = 0.35 + ring * 0.55;
+    twinkle[i] = hash(i * 5.5 + 2.2);
+  }
+  await yieldToMain();
+  return { pos, seed, orbit, twinkle };
+}
+
 export const CAMERA = { position: [0, 0, CAM_Z] as [number, number, number], fov: FOV, near: 0.1, far: 20 };
 
 export class OrbEngine {
@@ -82,23 +132,13 @@ export class OrbEngine {
   private readonly target = new Vector3();
   private readonly quat = new Quaternion();
 
-  constructor(particles: number, sparks: number) {
-    // --- shell: Fibonacci sphere home points + 4 random seeds per particle
-    const pos = new Float32Array(particles * 3);
-    const seed = new Float32Array(particles * 4);
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < particles; i++) {
-      const y = 1 - ((i + 0.5) / particles) * 2;
-      const r = Math.sqrt(1 - y * y);
-      const th = golden * i;
-      pos[i * 3] = Math.cos(th) * r;
-      pos[i * 3 + 1] = y;
-      pos[i * 3 + 2] = Math.sin(th) * r;
-      seed[i * 4] = hash(i * 1.13);
-      seed[i * 4 + 1] = hash(i * 2.71 + 3.1);
-      seed[i * 4 + 2] = hash(i * 0.57 + 9.4);
-      seed[i * 4 + 3] = Math.pow(hash(i * 3.33 + 1.7), 2.2);
-    }
+  /** Build the engine in short, yielding steps so no single task blocks the main thread for long. */
+  static async create(particles: number, sparks: number): Promise<OrbEngine> {
+    const attrs = await buildAttributes(particles, sparks);
+    return new OrbEngine(particles, sparks, attrs);
+  }
+
+  private constructor(particles: number, sparks: number, { pos, seed, orbit, twinkle }: Attributes) {
     this.shellGeo.setAttribute("position", new BufferAttribute(pos, 3));
     this.shellGeo.setAttribute("aSeed", new BufferAttribute(seed, 4));
     this.shellGeo.boundingSphere = new Sphere(new Vector3(), 2);
@@ -129,18 +169,8 @@ export class OrbEngine {
     const shell = new Points(this.shellGeo, this.shellMat);
     shell.frustumCulled = false;
 
-    // --- sparks: little satellites on crossing orbits
-    const orbit = new Float32Array(sparks * 4);
-    const twinkle = new Float32Array(sparks);
+    // --- sparks (attributes from buildAttributes)
     const sparkPos = new Float32Array(sparks * 3);
-    for (let i = 0; i < sparks; i++) {
-      const ring = i % 5;
-      orbit[i * 4] = 1.38 + ring * 0.09 + hash(i * 7.1) * 0.12;
-      orbit[i * 4 + 1] = (0.6 + hash(i * 4.4) * 0.8) * (ring % 2 ? -1 : 1);
-      orbit[i * 4 + 2] = hash(i * 9.9) * Math.PI * 2;
-      orbit[i * 4 + 3] = 0.35 + ring * 0.55;
-      twinkle[i] = hash(i * 5.5 + 2.2);
-    }
     this.sparkGeo.setAttribute("position", new BufferAttribute(sparkPos, 3));
     this.sparkGeo.setAttribute("aOrbit", new BufferAttribute(orbit, 4));
     this.sparkGeo.setAttribute("aTwinkle", new BufferAttribute(twinkle, 1));

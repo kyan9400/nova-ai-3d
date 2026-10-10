@@ -61,7 +61,8 @@ All copy lives in `src/app/page.tsx`, `src/components/ChatDemo.tsx` and `src/com
 | medium | 26 000 | 500 | 1.5 | yes |
 | low | 9 000 | 220 | 1 | no |
 
-GPU name via `WEBGL_debug_renderer_info`: software renderers → low. Intel/AMD integrated, Apple, Mali, Adreno and
+GPU name via `WEBGL_debug_renderer_info` on a 1×1 throwaway context: software renderers (SwiftShader, llvmpipe,
+Basic Render, or a failIfMajorPerformanceCaveat refusal) → no 3D at all, the poster stays (low when `?quality=` forces it). Intel/AMD integrated, Apple, Mali, Adreno and
 PowerVR → at most medium. Touch or ≤ 4 cores → medium. Save-data, ≤ 2 cores or ≤ 2 GB → low.
 `?quality=low|medium|high` overrides.
 
@@ -72,7 +73,8 @@ PowerVR → at most medium. Touch or ≤ 4 cores → medium. Save-data, ≤ 2 co
   raises it after 2 s of headroom and stops raising after two bounces. drei's `PerformanceMonitor` is not used,
   because it reads render-on-demand gaps as slow frames.
 - Warm-up: `gl.compileAsync(scene, camera)` behind the code-drawn SVG poster, and the canvas fades in only when ready.
-- 3D chunk (three + r3f) loads via `next/dynamic(..., { ssr: false })`. First-load JS for `/` ≈ 179 KB gzip, and
+- 3D chunk (three + r3f) loads via `next/dynamic(..., { ssr: false })`, only after window `load` + an idle
+  callback (never during hydration) and never on software renderers. Particle generation yields between slices. First-load JS for `/` ≈ 179 KB gzip, and
   the lazy 3D chunk ≈ 240 KB gzip.
 - No backdrop-filter, no background-attachment: fixed. CSS animates only transform/opacity, and scroll reveals use
   CSS `animation-timeline: view()`.
