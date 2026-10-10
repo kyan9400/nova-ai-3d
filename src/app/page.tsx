@@ -3,6 +3,16 @@ import ChatDemo from "@/components/ChatDemo";
 import Pricing from "@/components/Pricing";
 import MotionToggle from "@/components/MotionToggle";
 import OrbPoster from "@/components/OrbPoster";
+import MobileMenu from "@/components/MobileMenu";
+
+const NAV_LINKS = [
+  { href: "#demo", label: "Demo" },
+  { href: "#capabilities", label: "Capabilities" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "#faq", label: "FAQ" },
+];
+
+const NAV_CTA = { href: "#pricing", label: "Start free" };
 
 const CAPABILITIES = [
   {
@@ -80,16 +90,18 @@ export default function Home() {
         <div className="nav__inner">
           <Logo />
           <nav aria-label="Main" className="nav__links">
-            <a href="#demo">Demo</a>
-            <a href="#capabilities">Capabilities</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#faq">FAQ</a>
+            {NAV_LINKS.map((l) => (
+              <a key={l.href} href={l.href}>
+                {l.label}
+              </a>
+            ))}
           </nav>
           <div className="nav__actions">
             <MotionToggle compact />
-            <a href="#pricing" className="btn btn--primary btn--sm">
-              Start free
+            <a href={NAV_CTA.href} className="btn btn--primary btn--sm nav__cta">
+              {NAV_CTA.label}
             </a>
+            <MobileMenu links={NAV_LINKS} cta={NAV_CTA} />
           </div>
         </div>
       </header>
@@ -115,7 +127,9 @@ export default function Home() {
                 </a>
               </div>
               <p className="hint">
-                <span className="hint__dot" aria-hidden="true" /> Move your cursor. The orb is paying attention.
+                <span className="hint__dot" aria-hidden="true" />
+                <span className="hint__fine">Move your cursor. The orb is paying attention.</span>
+                <span className="hint__touch">Touch the screen. The orb is paying attention.</span>
               </p>
             </div>
           </section>

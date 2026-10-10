@@ -13,7 +13,8 @@ Concept project — fictional brand.
 - Next.js 16 (App Router, TypeScript strict, `src/` dir), React 19
 - three.js 0.186 + @react-three/fiber 9, loaded with `next/dynamic(..., { ssr: false })` so the HTML renders instantly
 - Tailwind CSS 4 (`@import "tailwindcss"` + `@theme` tokens) and hand-written component CSS
-- `next/font` (Archivo with its width axis + Martian Mono), `next/og` for the OG image and icons
+- `next/font` (Archivo with its width axis + Martian Mono), `next/og` for the icons; the OG/Twitter
+  image is a 1200×630 screenshot of the live site (`opengraph-image.png` / `twitter-image.png` + `.alt.txt`)
 - Design: graphite ink with one electric accent (signal yellow #FFD60A); the orb is silver particles that light up
   yellow where you point, type or listen
 
@@ -66,8 +67,8 @@ On Windows, if the build runs out of memory: `NODE_OPTIONS=--max-old-space-size=
 
 ## Project layout
 ```
-src/app/            layout, page, globals.css (design tokens), 404, OG image, icons, robots, sitemap
-src/components/     Stage (sticky canvas + poster), ChatDemo, Pricing, MotionToggle, OrbPoster
+src/app/            layout, page, globals.css (design tokens), 404, OG/Twitter image (PNG), icons, robots, sitemap
+src/components/     Stage (sticky canvas + poster), ChatDemo, Pricing, MotionToggle, MobileMenu, OrbPoster
 src/components/orb/ OrbCanvas (r3f), engine.ts (scene + per-frame logic), shaders.ts (GLSL)
 src/lib/            orb-signal (DOM ↔ 3D), motion preference, quality tiers
 SPEC.md             concept, copy, design system, performance budget

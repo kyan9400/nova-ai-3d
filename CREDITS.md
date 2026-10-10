@@ -1,7 +1,8 @@
 # Credits
 
 Everything visual on this site is made in code for this project: the particle orb (GLSL shaders and
-procedural geometry), the no-WebGL poster (inline SVG), the favicon and the Open Graph image (`next/og`).
+procedural geometry), the no-WebGL poster (inline SVG) and the favicon (`next/og`). The Open Graph / Twitter image is a
+screenshot of this site itself.
 There are **no third-party 3D models, textures, HDRIs, photos, icons or audio files**.
 
 ## Fonts (SIL Open Font License 1.1, self-hosted at build time via `next/font/google`)
