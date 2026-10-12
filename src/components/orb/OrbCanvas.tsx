@@ -23,7 +23,7 @@ export default function OrbCanvas({ tier, reduced, onReady, onFail }: Props) {
   useEffect(() => {
     let alive = true;
     let built: OrbEngine | null = null;
-    OrbEngine.create(settings.particles, settings.sparks)
+    OrbEngine.create(settings)
       .then((e) => {
         built = e;
         if (alive) setEngine(e);
@@ -34,7 +34,7 @@ export default function OrbCanvas({ tier, reduced, onReady, onFail }: Props) {
       alive = false;
       built?.dispose();
     };
-  }, [settings.particles, settings.sparks, onFail]);
+  }, [settings, onFail]);
 
   if (!engine) return null;
 
@@ -47,12 +47,14 @@ export default function OrbCanvas({ tier, reduced, onReady, onFail }: Props) {
       gl={{
         antialias: settings.antialias,
         alpha: true,
-        depth: false,
+        depth: true, // the pearl nucleus hides far-side particles
         stencil: false,
         powerPreference: "high-performance",
       }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
+        // R3F's default ACES tone mapping (affects only the nucleus; the ShaderMaterials skip it)
+        gl.toneMappingExposure = 1.1;
         gl.domElement.dataset.tier = tier;
         gl.domElement.addEventListener(
           "webglcontextlost",
@@ -96,11 +98,12 @@ function Mind({ engine, cap, reduced, onReady }: MindProps) {
     invalidate();
   }, [reduced, invalidate]);
 
-  // warm-up: compile every shader behind the poster, reveal only when ready
+  // warm-up behind the poster: studio environment for the nucleus, then compile every shader; reveal only when ready
   useEffect(() => {
     let cancelled = false;
     const reveal = () => {
       if (cancelled) return;
+      engine.startIntro();
       invalidate();
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
@@ -110,17 +113,21 @@ function Mind({ engine, cap, reduced, onReady }: MindProps) {
     };
     // renderer creation was its own long task: yield once before compiling
     yieldToMain()
+      .then(() => {
+        if (!cancelled) engine.attachEnvironment(gl);
+        return yieldToMain();
+      })
       .then(() => (cancelled ? undefined : gl.compileAsync(scene, camera)))
       .then(reveal, reveal);
     return () => {
       cancelled = true;
     };
-  }, [gl, scene, camera, invalidate, onReady]);
+  }, [engine, gl, scene, camera, invalidate, onReady]);
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 1 / 20);
     const cam = state.camera as PerspectiveCamera;
-    const moving = engine.update(dt, cam, cam.aspect, state.size.height, state.viewport.dpr, reduced);
+    const moving = engine.update(dt, cam, state.size.height, state.viewport.dpr, reduced);
     const continuous = orbSignal.visible && (!reduced || moving);
     if (continuous && !reduced) adaptive.frame(delta * 1000, performance.now());
     if (continuous) state.invalidate();

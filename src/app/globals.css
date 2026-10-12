@@ -43,6 +43,12 @@
   --r-pill: 999px;
   --gutter: clamp(16px, 4vw, 48px);
   --nav-h: 64px;
+  /* motion tokens: every transition and animation uses these */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 180ms;
+  --dur-2: 420ms;
+  --dur-3: 900ms;
   color-scheme: dark;
 }
 
@@ -149,11 +155,17 @@ main:focus {
   gap: var(--s-2);
 }
 
+/* instrument-panel index: <p class="eyebrow" data-index="03"> */
 .eyebrow::before {
-  content: "";
-  width: 18px;
-  height: 1px;
-  background: currentColor;
+  content: attr(data-index);
+  padding-right: var(--s-2);
+  border-right: 1px solid rgb(255 214 10 / 0.45);
+  color: var(--color-text);
+  letter-spacing: 0.08em;
+}
+
+.eyebrow:not([data-index])::before {
+  content: none;
 }
 
 .display {
@@ -161,14 +173,21 @@ main:focus {
   font-family: var(--font-display);
   font-weight: 800;
   font-stretch: 125%;
-  font-size: clamp(2.375rem, 6.4vw, 5.5rem);
-  line-height: 0.98;
-  letter-spacing: -0.035em;
+  font-size: clamp(2.75rem, 8.4vw, 8.25rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
   text-wrap: balance;
 }
 
+/* hand-set lines of the hero H1 */
+.display .line {
+  display: block;
+}
+
+/* contact headline: full-width display size */
 .display--sm {
-  font-size: clamp(2.125rem, 5.2vw, 4.25rem);
+  font-size: clamp(2.5rem, 7.2vw, 7rem);
+  line-height: 0.95;
 }
 
 .display em,
@@ -230,9 +249,10 @@ main:focus {
   white-space: nowrap;
   cursor: pointer;
   border: 1px solid transparent;
+  translate: var(--mx, 0px) var(--my, 0px);
   transition:
-    transform 0.2s ease,
-    opacity 0.2s ease;
+    transform var(--dur-1) var(--ease-out),
+    opacity var(--dur-1) var(--ease-out);
 }
 
 .btn:hover {
@@ -324,8 +344,57 @@ main:focus {
   border-radius: var(--r-pill);
 }
 
-.nav__links a:hover {
+.nav__links a {
+  position: relative;
+}
+
+.nav__links a::after {
+  content: "";
+  position: absolute;
+  left: var(--s-3);
+  right: var(--s-3);
+  bottom: 8px;
+  height: 1px;
+  background: var(--color-signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.nav__links a:hover,
+.nav__links a[data-active] {
   color: var(--color-text);
+}
+
+.nav__links a[data-active]::after {
+  transform: scaleX(1);
+}
+
+/* 2px scroll progress under the nav: CSS scroll timeline only (hidden without support / reduced motion) */
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  display: none;
+}
+
+@supports (animation-timeline: scroll()) {
+  html:not(.reduce-motion) .progress {
+    display: block;
+    animation: progress linear both;
+    animation-timeline: scroll(root);
+  }
+}
+
+@keyframes progress {
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .nav__actions {
@@ -422,15 +491,15 @@ main:focus {
 
 html:not(.reduce-motion) .menu-panel {
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease,
-    visibility 0s linear 0.2s;
+    opacity var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
+    visibility 0s linear var(--dur-1);
 }
 
 html:not(.reduce-motion) .menu-panel[data-open] {
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease,
+    opacity var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
     visibility 0s;
 }
 
@@ -530,7 +599,7 @@ html:not(.reduce-motion) .menu-panel[data-open] {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.9s ease;
+  transition: opacity var(--dur-3) var(--ease-out);
 }
 
 .stage-layer.is-live .orb-wrap {
@@ -549,7 +618,7 @@ html:not(.reduce-motion) .menu-panel[data-open] {
   width: min(92vw, 52svh);
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  transition: opacity 0.9s ease;
+  transition: opacity var(--dur-3) var(--ease-out);
 }
 
 .orb-poster svg {
@@ -574,17 +643,200 @@ html:not(.reduce-motion) .menu-panel[data-open] {
   z-index: 1;
 }
 
+/* "the mind opens": a mono caption that fades in at mid-scroll, driven by the 1px .stage-marker */
+.stage-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 12svh;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  transform: translateX(-50%);
+  font: 400 0.8125rem/1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: var(--color-text);
+  opacity: 0;
+}
+
+.stage-marker {
+  height: 1px;
+}
+
+@supports (animation-timeline: view()) {
+  html:not(.reduce-motion) .stage {
+    timeline-scope: --mid;
+  }
+  html:not(.reduce-motion) .stage-marker {
+    view-timeline-name: --mid;
+  }
+  html:not(.reduce-motion) .stage-caption {
+    animation: caption linear both;
+    animation-timeline: --mid;
+  }
+}
+
+@keyframes caption {
+  0%,
+  30% {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  45%,
+  60% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+
 /* ---------- hero ---------- */
 .hero {
+  position: relative;
   min-height: 100svh;
   display: flex;
-  align-items: flex-end;
-  padding: calc(var(--nav-h) + var(--s-6)) 0 var(--s-7);
-  background: linear-gradient(to top, rgb(10 10 11 / 0.95) 0%, rgb(10 10 11 / 0.7) 38%, transparent 60%);
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: calc(var(--nav-h) + var(--s-6)) 0 var(--s-5);
+  background: linear-gradient(to top, rgb(10 10 11 / 0.95) 0%, rgb(10 10 11 / 0.7) 42%, transparent 62%);
 }
 
 .hero__inner {
   position: relative;
+}
+
+.hero .lede {
+  max-width: 32rem;
+}
+
+/* footer rail: 01 Listens · 02 Thinks · 03 Answers + scroll cue */
+.hero__rail {
+  margin-top: var(--s-7);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  font: 400 0.75rem/1.4 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-dim);
+}
+
+.rail__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rail__n {
+  color: var(--color-signal);
+}
+
+.rail__scroll {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding-left: var(--s-2);
+  color: var(--color-dim);
+  text-decoration: none;
+}
+
+.rail__scroll:hover {
+  color: var(--color-text);
+}
+
+.rail__line {
+  width: 1px;
+  height: 28px;
+  background: var(--color-steel);
+  transform-origin: top;
+}
+
+html:not(.reduce-motion) .rail__line {
+  animation: grow-line 2.4s var(--ease-in-out) infinite;
+}
+
+@keyframes grow-line {
+  0% {
+    transform: scaleY(0);
+    opacity: 1;
+  }
+  55% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 479px) {
+  .rail__steps li:not(:first-child) {
+    display: none;
+  }
+}
+
+/* intro: the H1 lines only rise (transform, opacity stays 1: it is the LCP); the rest fades up after it */
+@keyframes rise-line {
+  from {
+    transform: translateY(0.18em);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+html:not(.reduce-motion) .hero .display .line {
+  animation: rise-line var(--dur-3) var(--ease-out) both;
+}
+
+html:not(.reduce-motion) .hero .display .line:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+html:not(.reduce-motion) .hero .display .line:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+html:not(.reduce-motion) .hero .eyebrow,
+html:not(.reduce-motion) .hero .lede,
+html:not(.reduce-motion) .hero__ctas,
+html:not(.reduce-motion) .hint,
+html:not(.reduce-motion) .hero__rail {
+  animation: fade-up 700ms var(--ease-out) both;
+}
+
+html:not(.reduce-motion) .hero .eyebrow {
+  animation-delay: 250ms;
+}
+
+html:not(.reduce-motion) .hero .lede {
+  animation-delay: 360ms;
+}
+
+html:not(.reduce-motion) .hero__ctas {
+  animation-delay: 470ms;
+}
+
+html:not(.reduce-motion) .hint {
+  animation-delay: 580ms;
+}
+
+html:not(.reduce-motion) .hero__rail {
+  animation-delay: 700ms;
 }
 
 .hero__ctas {
@@ -625,8 +877,18 @@ html:not(.reduce-motion) .menu-panel[data-open] {
   }
 }
 
+.hint__dot {
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+/* the orb is live: the dot brightens with it */
+html[data-live] .hint__dot {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 5px rgb(255 240 163 / 0.28);
+}
+
 html:not(.reduce-motion) .hint__dot {
-  animation: blink 2.4s ease-in-out infinite;
+  animation: blink 2.4s var(--ease-in-out) infinite;
 }
 
 @keyframes blink {
@@ -635,13 +897,33 @@ html:not(.reduce-motion) .hint__dot {
   }
 }
 
+/* desktop: 12-column hero, copy on 1-7, the orb over 7-12; the H1 may overlap the orb's left edge */
 @media (min-aspect-ratio: 23/20) {
   .hero {
-    align-items: center;
-    background: linear-gradient(to right, rgb(10 10 11 / 0.85) 0%, rgb(10 10 11 / 0.4) 40%, transparent 60%);
+    justify-content: center;
+    padding-bottom: calc(var(--s-9) + var(--s-4));
+    background: linear-gradient(to right, rgb(10 10 11 / 0.88) 0%, rgb(10 10 11 / 0.5) 42%, transparent 66%);
+  }
+  .hero .container {
+    max-width: 1440px;
+  }
+  .hero__inner {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--s-5);
   }
   .hero__inner > * {
-    max-width: 40rem;
+    grid-column: 1 / 8;
+  }
+  .hero__inner > .display {
+    grid-column: 1 / -1;
+  }
+  .hero__rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--s-5);
+    margin: 0 auto;
   }
 }
 
@@ -702,9 +984,10 @@ html:not(.reduce-motion) .hint__dot {
 
 .chat__bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-4);
   border-bottom: 1px solid var(--color-line);
   font: 500 0.8125rem/1 var(--font-mono);
 }
@@ -729,8 +1012,48 @@ html:not(.reduce-motion) .hint__dot {
 }
 
 .chat__status {
-  margin-left: auto;
   color: var(--color-dim);
+}
+
+/* mind modes (aria-pressed buttons): 44px hit areas, small visual pills */
+.modes {
+  margin-left: auto;
+  display: flex;
+}
+
+.modes__opt {
+  position: relative;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--s-2);
+  border: 0;
+  background: transparent;
+  color: var(--color-dim);
+  font: 500 0.75rem/1 var(--font-mono);
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.modes__opt::before {
+  content: "";
+  position: absolute;
+  inset: 9px 0;
+  z-index: -1;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.modes__opt:hover {
+  color: var(--color-text);
+}
+
+.modes__opt[aria-pressed="true"] {
+  color: var(--color-ink);
+}
+
+.modes__opt[aria-pressed="true"]::before {
+  background: var(--color-signal);
 }
 
 .chat__log {
@@ -867,6 +1190,18 @@ html:not(.reduce-motion) .bubble--typing span {
   padding: clamp(var(--s-8), 12vw, var(--s-10)) 0;
 }
 
+/* skip layout/paint of off-screen sections; the closing keeps normal rendering for its glow.
+   EnhancementsGate sets data-cv="off" on the first same-page link click, so smooth anchor jumps
+   are measured with real section heights instead of the 900px placeholders. */
+html:not([data-cv="off"]) .section:not(.closing) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+
+.section--line {
+  border-top: 1px solid var(--color-line);
+}
+
 .section--alt {
   background: linear-gradient(180deg, var(--color-ink-2), var(--color-ink) 85%);
   border-top: 1px solid var(--color-line);
@@ -882,16 +1217,74 @@ html:not(.reduce-motion) .bubble--typing span {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
 }
 
+/* >= 900px: the lead card spans the three rows beside it */
+@media (min-width: 900px) {
+  .caps {
+    grid-template-columns: 1.15fr 1fr;
+  }
+  .cap--lead {
+    grid-row: span 3;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--s-7) var(--s-6);
+  }
+  .cap--lead .h3 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-stretch: 118%;
+    font-size: clamp(1.75rem, 2.6vw, 2.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    margin-bottom: var(--s-4);
+  }
+  .cap--lead .body {
+    font-size: 1.125rem;
+    max-width: 30rem;
+  }
+  .cap:not(.cap--lead) {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--s-5);
+  }
+  .cap:not(.cap--lead) .cap__icon {
+    grid-row: span 2;
+    margin: 2px 0 0;
+  }
+}
+
 .cap {
+  position: relative;
   padding: var(--s-6) var(--s-5);
   border-radius: var(--r-md);
   border: 1px solid var(--color-line);
   background: linear-gradient(180deg, var(--color-ink-2), transparent);
 }
 
+/* hover border at 40% signal: an overlay ring, so only opacity animates */
+.cap::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid rgb(255 214 10 / 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+
+.cap:hover::after {
+  opacity: 1;
+}
+
 .cap__icon {
   margin-bottom: var(--s-6);
   color: var(--color-signal);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.cap:hover .cap__icon {
+  transform: rotate(8deg);
 }
 
 .cap:nth-child(2) .cap__icon {
@@ -985,14 +1378,21 @@ html:not(.reduce-motion) .bubble--typing span {
 }
 
 .stat dd {
-  margin: 0 0 var(--s-1);
+  margin: 0 0 var(--s-2);
   font-family: var(--font-display);
   font-weight: 800;
-  font-stretch: 112%;
-  letter-spacing: -0.03em;
-  font-size: clamp(2.5rem, 5vw, 3.25rem);
-  line-height: 1;
+  font-stretch: 125%;
+  letter-spacing: -0.045em;
+  font-size: clamp(3.5rem, 7vw, 6.5rem);
+  line-height: 0.9;
   color: var(--color-text);
+}
+
+.stat__unit {
+  margin-left: 0.06em;
+  font-size: 0.42em;
+  font-stretch: 100%;
+  letter-spacing: 0;
 }
 
 .stat:nth-child(1) dd {
@@ -1001,6 +1401,72 @@ html:not(.reduce-motion) .bubble--typing span {
 
 .stat:nth-child(3) dd {
   color: var(--color-steel);
+}
+
+/* voices (social proof, fictional people) */
+.voices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+
+.voice figure {
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--s-7);
+  padding: var(--s-6);
+  border-radius: var(--r-md);
+  border: 1px solid var(--color-line);
+  background: var(--color-ink-2);
+}
+
+.voice:nth-child(2) figure {
+  background: linear-gradient(170deg, #232114, var(--color-ink-2) 65%);
+  border-color: rgb(255 214 10 / 0.35);
+}
+
+.voice__quote {
+  margin: 0;
+}
+
+.voice__quote p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-stretch: 108%;
+  font-size: clamp(1.25rem, 1.9vw, 1.5rem);
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+}
+
+.voice__who {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--color-line);
+}
+
+.voice__name {
+  font-weight: 700;
+}
+
+.voice__role {
+  font: 400 0.8125rem/1.4 var(--font-mono);
+  color: var(--color-muted);
+}
+
+.voices__note {
+  margin: var(--s-6) 0 0;
+  font: 400 0.75rem/1.4 var(--font-mono);
+  color: var(--color-dim);
 }
 
 /* pricing */
@@ -1254,7 +1720,7 @@ html:not(.reduce-motion) .plan__orb span:nth-child(1) {
   height: 1.5px;
   background: var(--color-signal);
   transform: translate(-50%, -50%);
-  transition: transform 0.25s ease;
+  transition: transform var(--dur-2) var(--ease-out);
 }
 
 .qa__icon::after {
@@ -1370,7 +1836,31 @@ html:not(.reduce-motion) .plan__orb span:nth-child(1) {
   color: var(--color-muted);
 }
 
-/* ---------- scroll reveals: CSS only, transform + opacity, full motion only ---------- */
+/* outline wordmark, decorative */
+.footer {
+  overflow: hidden;
+}
+
+.footer__mark {
+  display: block;
+  width: min(100% - 2 * var(--gutter), 68rem);
+  height: auto;
+  margin: var(--s-7) auto -0.6rem;
+  overflow: visible;
+}
+
+.footer__mark text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 125%;
+  font-size: 290px;
+  letter-spacing: -0.04em;
+  fill: none;
+  stroke: var(--color-steel);
+  stroke-width: 1px;
+}
+
+/* card / step / stat reveals on scroll (CSS view timeline, no JS) */
 @supports (animation-timeline: view()) {
   html:not(.reduce-motion) .reveal {
     animation: reveal linear both;
@@ -1384,6 +1874,148 @@ html:not(.reduce-motion) .plan__orb span:nth-child(1) {
     opacity: 0;
     transform: translateY(28px);
   }
+}
+
+/* split-word headings (SplitWords): each word rises out of its own clip box, 40ms-ish stagger via --i */
+.w {
+  display: inline-block;
+  overflow: clip;
+  /* side padding: tight letter-spacing must not clip the edge glyphs */
+  padding: 0 0.08em 0.08em;
+  margin: 0 -0.08em -0.08em;
+  vertical-align: top;
+}
+
+.w > span {
+  display: inline-block;
+}
+
+@supports (animation-timeline: view()) {
+  html:not(.reduce-motion) .w {
+    view-timeline-name: --w;
+  }
+  html:not(.reduce-motion) .w > span {
+    animation: word-rise linear both;
+    animation-timeline: --w;
+    animation-range: entry calc(var(--i, 0) * 4%) entry calc(60% + var(--i, 0) * 4%);
+  }
+}
+
+@keyframes word-rise {
+  from {
+    transform: translateY(105%);
+  }
+}
+
+/* ---------- section dots (Enhancements, >= 1100px) ---------- */
+.dots {
+  position: fixed;
+  right: var(--s-3);
+  top: 50%;
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  transform: translateY(-50%);
+}
+
+@media (min-width: 1100px) {
+  .dots {
+    display: flex;
+  }
+}
+
+.dots__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  text-decoration: none;
+}
+
+/* the visible dot is 8px; the link is the 44px hit area */
+.dots__link::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--color-dim);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.dots__link:hover::before {
+  background: var(--color-text);
+}
+
+.dots__link[aria-current="true"]::before {
+  background: var(--color-signal);
+  transform: scaleY(2.6);
+}
+
+.dots__label {
+  position: absolute;
+  right: 44px;
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--r-pill);
+  background: var(--color-ink-3);
+  color: var(--color-text);
+  font: 400 0.75rem/1.4 var(--font-mono);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(6px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+
+.dots__link:hover .dots__label,
+.dots__link:focus-visible .dots__label {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- cursor ring (fine pointer + full motion only; the native cursor stays) ---------- */
+.cursor-ring,
+.cursor-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 90;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease-out);
+}
+
+.cursor-ring {
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 1px solid var(--color-steel);
+}
+
+.cursor-dot {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: var(--color-signal);
+}
+
+.cursor-ring[data-on],
+.cursor-dot[data-on] {
+  opacity: 1;
+}
+
+.cursor-ring.is-hidden,
+.cursor-dot.is-hidden {
+  opacity: 0;
+}
+
+html.reduce-motion .cursor-ring,
+html.reduce-motion .cursor-dot {
+  display: none;
 }
 
 html.reduce-motion *,

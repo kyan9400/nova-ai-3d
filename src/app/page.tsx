@@ -4,6 +4,9 @@ import Pricing from "@/components/Pricing";
 import MotionToggle from "@/components/MotionToggle";
 import OrbPoster from "@/components/OrbPoster";
 import MobileMenu from "@/components/MobileMenu";
+import SplitWords from "@/components/SplitWords";
+import EnhancementsGate from "@/components/EnhancementsGate";
+import { SITE_URL } from "@/lib/site";
 
 const NAV_LINKS = [
   { href: "#demo", label: "Demo" },
@@ -47,6 +50,35 @@ const STEPS = [
   },
 ];
 
+const VOICES = [
+  {
+    quote: "We used to lose half of Monday finding last week’s decisions. Now we just ask.",
+    name: "Mira Okafor",
+    role: "Ops lead, Halden Freight",
+  },
+  {
+    quote: "The receipts sold it. Every answer links the doc, so nobody argues with it.",
+    name: "Tomás Reyes",
+    role: "Eng manager, Quillstone",
+  },
+  {
+    quote: "It drafts release notes in our voice. I edit two words and ship.",
+    name: "Anya Lindqvist",
+    role: "Product, Northfold Labs",
+  },
+];
+
+const RAIL = ["Listens", "Thinks", "Answers"];
+
+// WebSite only: no Product / Offer schema, because the brand is fictional
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Nova",
+  url: SITE_URL,
+  author: { "@type": "Person", name: "Alhassan Alfarran" },
+};
+
 const FAQ = [
   {
     q: "Is my data used to train models?",
@@ -86,6 +118,7 @@ function Logo() {
 export default function Home() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <header className="nav">
         <div className="nav__inner">
           <Logo />
@@ -104,15 +137,27 @@ export default function Home() {
             <MobileMenu links={NAV_LINKS} cta={NAV_CTA} />
           </div>
         </div>
+        {/* scroll progress: pure CSS (scroll timeline), decorative */}
+        <div className="progress" aria-hidden="true" />
       </header>
 
       <main id="main" tabIndex={-1}>
         <Stage poster={<OrbPoster />}>
           <section id="top" className="hero" aria-labelledby="hero-title">
             <div className="container hero__inner">
-              <p className="eyebrow">Nova / assistant for teams</p>
+              <p className="eyebrow" data-index="01">
+                Nova / assistant for teams
+              </p>
+              {/*
+                LCP element. It must never start at opacity 0, sit behind a curtain or be clipped:
+                the intro may only nudge its lines with a transform (globals.css, "rise-line").
+              */}
               <h1 id="hero-title" className="display">
-                A mind that <em>listens</em> before it speaks.
+                <span className="line">A mind that</span>{" "}
+                <span className="line">
+                  <em>listens</em>
+                </span>{" "}
+                <span className="line">before it speaks.</span>
               </h1>
               <p className="lede">
                 Nova reads your docs, meetings and tickets — then answers in seconds, with the source attached. No more
@@ -132,14 +177,32 @@ export default function Home() {
                 <span className="hint__touch">Touch the screen. The orb is paying attention.</span>
               </p>
             </div>
+            <div className="container hero__rail">
+              <ol className="rail__steps">
+                {RAIL.map((r, i) => (
+                  <li key={r}>
+                    <span className="rail__n">0{i + 1}</span> {r}
+                  </li>
+                ))}
+              </ol>
+              <a href="#demo" className="rail__scroll">
+                Scroll
+                <span className="rail__line" aria-hidden="true" />
+              </a>
+            </div>
           </section>
+
+          {/* 1px marker between hero and demo: drives the mid-scroll caption (CSS view timeline) */}
+          <div className="stage-marker" aria-hidden="true" />
 
           <section id="demo" className="demo" aria-labelledby="demo-title">
             <div className="container demo__inner">
               <div className="demo__copy">
-                <p className="eyebrow">Live demo</p>
+                <p className="eyebrow" data-index="02">
+                  Live demo
+                </p>
                 <h2 id="demo-title" className="h2">
-                  Say something. <em>Watch it think.</em>
+                  <SplitWords text="Say something." em="Watch it think." />
                 </h2>
                 <p className="body">
                   Every key you press ripples through Nova&apos;s particles. Send a message and it gathers itself, then
@@ -153,14 +216,23 @@ export default function Home() {
 
         <section id="capabilities" className="section" aria-labelledby="cap-title">
           <div className="container">
-            <p className="eyebrow">What Nova does</p>
+            <p className="eyebrow" data-index="03">
+              What Nova does
+            </p>
             <h2 id="cap-title" className="h2">
-              Four jobs, done <em>quietly.</em>
+              <SplitWords text="Four jobs, done" em="quietly." />
             </h2>
             <ul className="caps">
-              {CAPABILITIES.map((c) => (
-                <li key={c.title} className="cap reveal">
-                  <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" focusable="false" className="cap__icon">
+              {CAPABILITIES.map((c, i) => (
+                <li key={c.title} className={`cap reveal${i === 0 ? " cap--lead" : ""}`}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width={i === 0 ? 56 : 28}
+                    height={i === 0 ? 56 : 28}
+                    aria-hidden="true"
+                    focusable="false"
+                    className="cap__icon"
+                  >
                     <path d={c.icon} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <h3 className="h3">{c.title}</h3>
@@ -174,9 +246,11 @@ export default function Home() {
         <section id="how" className="section section--alt" aria-labelledby="how-title">
           <div className="container how">
             <div>
-              <p className="eyebrow">How it works</p>
+              <p className="eyebrow" data-index="04">
+                How it works
+              </p>
               <h2 id="how-title" className="h2">
-                Running by <em>lunch.</em>
+                <SplitWords text="Running by" em="lunch." />
               </h2>
             </div>
             <ol className="steps">
@@ -198,9 +272,11 @@ export default function Home() {
         <section id="trust" className="section" aria-labelledby="trust-title">
           <div className="container trust">
             <div className="trust__copy">
-              <p className="eyebrow">Trust</p>
+              <p className="eyebrow" data-index="05">
+                Trust
+              </p>
               <h2 id="trust-title" className="h2">
-                Your knowledge <em>stays yours.</em>
+                <SplitWords text="Your knowledge" em="stays yours." />
               </h2>
               <p className="body body--lg">
                 Nova never trains shared models on your workspace. Data is encrypted in transit and at rest, permissions
@@ -210,7 +286,9 @@ export default function Home() {
             <dl className="stats">
               <div className="stat reveal">
                 <dt>Median answer time</dt>
-                <dd>1.4 s</dd>
+                <dd>
+                  1.4<span className="stat__unit">s</span>
+                </dd>
               </div>
               <div className="stat reveal">
                 <dt>Workspace data used for training</dt>
@@ -218,17 +296,48 @@ export default function Home() {
               </div>
               <div className="stat reveal">
                 <dt>Uptime target</dt>
-                <dd>99.95%</dd>
+                <dd>
+                  99.95<span className="stat__unit">%</span>
+                </dd>
               </div>
             </dl>
           </div>
         </section>
 
+        <section id="voices" className="section section--line" aria-labelledby="voices-title">
+          <div className="container">
+            <p className="eyebrow" data-index="06">
+              Voices
+            </p>
+            <h2 id="voices-title" className="h2">
+              <SplitWords text="Teams that stopped" em="asking around." />
+            </h2>
+            <ul className="voices">
+              {VOICES.map((v) => (
+                <li key={v.name} className="voice reveal">
+                  <figure>
+                    <blockquote className="voice__quote">
+                      <p>“{v.quote}”</p>
+                    </blockquote>
+                    <figcaption className="voice__who">
+                      <span className="voice__name">{v.name}</span>
+                      <span className="voice__role">{v.role}</span>
+                    </figcaption>
+                  </figure>
+                </li>
+              ))}
+            </ul>
+            <p className="voices__note">Names and companies are fictional, like Nova.</p>
+          </div>
+        </section>
+
         <section id="pricing" className="section section--alt" aria-labelledby="pricing-title">
           <div className="container">
-            <p className="eyebrow">Pricing</p>
+            <p className="eyebrow" data-index="07">
+              Pricing
+            </p>
             <h2 id="pricing-title" className="h2">
-              Pick an <em>orbit.</em>
+              <SplitWords text="Pick an" em="orbit." />
             </h2>
             <Pricing />
           </div>
@@ -237,9 +346,11 @@ export default function Home() {
         <section id="faq" className="section" aria-labelledby="faq-title">
           <div className="container faq">
             <div>
-              <p className="eyebrow">FAQ</p>
+              <p className="eyebrow" data-index="08">
+                FAQ
+              </p>
               <h2 id="faq-title" className="h2">
-                Fair <em>questions.</em>
+                <SplitWords text="Fair" em="questions." />
               </h2>
             </div>
             <div className="faq__list">
@@ -260,7 +371,7 @@ export default function Home() {
           <div className="container closing__inner">
             <div className="closing__glow" aria-hidden="true" />
             <h2 id="contact-title" className="display display--sm">
-              Give your team a <em>second brain.</em>
+              <SplitWords text="Give your team a" em="second brain." />
             </h2>
             <p className="lede">Start free in two minutes. Or just say hello — I build sites like this one.</p>
             <div className="closing__ctas">
@@ -304,7 +415,21 @@ export default function Home() {
           </ul>
           <p className="footer__copy">© 2026 Alhassan Alfarran</p>
         </div>
+        {/* outline wordmark: SVG text, so it is pure decoration (no text-contrast check, no selection) */}
+        <svg className="footer__mark" viewBox="0 0 1000 250" aria-hidden="true" focusable="false">
+          <text
+            x="500"
+            y="218"
+            textAnchor="middle"
+            textLength="980"
+            lengthAdjust="spacingAndGlyphs"
+            vectorEffect="non-scaling-stroke"
+          >
+            NOVA
+          </text>
+        </svg>
       </footer>
+      <EnhancementsGate />
     </>
   );
 }

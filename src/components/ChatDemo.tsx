@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from "react";
 import { orbKeystroke, orbThinking, orbSpeaking, orbWordBeat } from "@/lib/orb-signal";
+import { getMode, setMode, subscribeMode, type Mode } from "@/lib/mind-mode";
 
 type Message = { id: number; role: "user" | "nova"; text: string };
 
@@ -29,6 +30,13 @@ const REPLIES: { match: RegExp; text: string }[] = [
 const FALLBACK =
   "Good question. In a real workspace I'd search your docs, chats and tickets and answer with links. In this demo I'm a little orb of light — try one of the suggestions.";
 
+// mind modes: uniform presets for the orb (no rebuild)
+const MODES: { value: Mode; label: string }[] = [
+  { value: 0, label: "Calm" },
+  { value: 1, label: "Focus" },
+  { value: 2, label: "Bright" },
+];
+
 const THINK_MS = 1100;
 const WORD_MS = 70;
 
@@ -42,6 +50,7 @@ export default function ChatDemo() {
   const logRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   const nextId = useRef(1);
+  const mode = useSyncExternalStore(subscribeMode, getMode, () => 0 as Mode);
 
   useEffect(() => {
     const list = timers.current;
@@ -116,6 +125,19 @@ export default function ChatDemo() {
         <span className="chat__status">
           {busy === "thinking" ? "thinking…" : busy === "speaking" ? "answering" : "listening"}
         </span>
+        <div className="modes" role="group" aria-label="Mind mode">
+          {MODES.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              className="modes__opt"
+              aria-pressed={mode === m.value}
+              onClick={() => setMode(m.value)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div ref={logRef} className="chat__log" aria-label="Conversation" role="region" tabIndex={0}>

@@ -9,10 +9,23 @@
 
 export type Tier = "low" | "medium" | "high";
 
-export const TIERS: Record<Tier, { particles: number; sparks: number; dprCap: number; antialias: boolean }> = {
-  high: { particles: 60000, sparks: 900, dprCap: 2, antialias: true },
-  medium: { particles: 26000, sparks: 500, dprCap: 1.5, antialias: true },
-  low: { particles: 9000, sparks: 220, dprCap: 1, antialias: false },
+export type TierSettings = {
+  particles: number;
+  sparks: number;
+  dprCap: number;
+  antialias: boolean;
+  /** pearl nucleus (MeshPhysicalMaterial + RoomEnvironment) */
+  nucleus: boolean;
+  /** synapse filament arcs (0 = none) */
+  filaments: number;
+  /** near particles grow and soften (depth of field feel) */
+  bokeh: boolean;
+};
+
+export const TIERS: Record<Tier, TierSettings> = {
+  high: { particles: 60000, sparks: 900, dprCap: 2, antialias: true, nucleus: true, filaments: 160, bokeh: true },
+  medium: { particles: 26000, sparks: 500, dprCap: 1.5, antialias: true, nucleus: true, filaments: 90, bokeh: false },
+  low: { particles: 9000, sparks: 220, dprCap: 1, antialias: false, nucleus: false, filaments: 0, bokeh: false },
 };
 
 const ORDER: Tier[] = ["low", "medium", "high"];

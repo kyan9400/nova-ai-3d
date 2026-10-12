@@ -5,15 +5,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { orbSignal, touchOrb } from "@/lib/orb-signal";
 import { useReducedMotion } from "@/lib/motion";
 import { detectQuality, type Tier } from "@/lib/quality";
+import { afterLoadIdle } from "@/lib/after-idle";
 
 // The 3D chunk (three + r3f) never renders on the server. It is requested only after window "load" plus an
 // idle callback (never during hydration), and never at all on software WebGL unless ?quality= forces it.
 const OrbCanvas = dynamic(() => import("./orb/OrbCanvas"), { ssr: false });
-
-type IdleWindow = Window & {
-  requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
 
 /** poster: the server-rendered OrbPoster, passed in so its SVG never has to hydrate. */
 export default function Stage({ children, poster }: { children: ReactNode; poster: ReactNode }) {
@@ -24,37 +20,28 @@ export default function Stage({ children, poster }: { children: ReactNode; poste
   const stageRef = useRef<HTMLDivElement>(null);
 
   // start the 3D only once the page is loaded and the main thread is idle
-  useEffect(() => {
-    let cancelled = false;
-    const start = () => {
-      if (cancelled) return;
-      const q = detectQuality();
-      if (!q.webgl || (q.software && !q.forced)) {
-        setFailed(true);
-        return;
-      }
-      setTier(q.tier);
-    };
-    const w = window as IdleWindow;
-    // idle callbacks and timeouts have separate id spaces, so remember which one was used
-    let idleHandle = 0;
-    let timeoutHandle = 0;
-    const schedule = () => {
-      if (w.requestIdleCallback) idleHandle = w.requestIdleCallback(start, { timeout: 2500 });
-      else timeoutHandle = window.setTimeout(start, 600);
-    };
-    if (document.readyState === "complete") schedule();
-    else window.addEventListener("load", schedule, { once: true });
-    return () => {
-      cancelled = true;
-      window.removeEventListener("load", schedule);
-      if (idleHandle && w.cancelIdleCallback) w.cancelIdleCallback(idleHandle);
-      if (timeoutHandle) window.clearTimeout(timeoutHandle);
-    };
-  }, []);
+  useEffect(
+    () =>
+      afterLoadIdle(() => {
+        const q = detectQuality();
+        if (!q.webgl || (q.software && !q.forced)) {
+          setFailed(true);
+          return;
+        }
+        setTier(q.tier);
+      }),
+    [],
+  );
 
-  const onReady = useCallback(() => setReady(true), []);
-  const onFail = useCallback(() => setFailed(true), []);
+  // data-live lets CSS answer the moment the orb switches on (hero hint dot)
+  const onReady = useCallback(() => {
+    setReady(true);
+    document.documentElement.dataset.live = "";
+  }, []);
+  const onFail = useCallback(() => {
+    setFailed(true);
+    delete document.documentElement.dataset.live;
+  }, []);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -131,6 +118,7 @@ export default function Stage({ children, poster }: { children: ReactNode; poste
     <div ref={stageRef} className="stage">
       <div className={`stage-layer${live ? " is-live" : ""}`} aria-hidden="true">
         {poster}
+        <p className="stage-caption">Every question opens the whole workspace.</p>
         {!failed && tier && (
           <div className="orb-wrap">
             <OrbCanvas tier={tier} reduced={reduced} onReady={onReady} onFail={onFail} />

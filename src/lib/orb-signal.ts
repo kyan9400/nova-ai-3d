@@ -22,6 +22,8 @@ export const orbSignal = {
   speaking: false,
   /** a word-beat to apply (consumed by the orb) */
   speakKick: 0,
+  /** mind mode from the demo card: 0 calm, 1 focus, 2 bright (uniforms only) */
+  mode: 0 as 0 | 1 | 2,
   /** performance.now() of the last thing that should make the orb react */
   lastActivity: 0,
   /** set by the canvas: requests a frame when the loop is idle */

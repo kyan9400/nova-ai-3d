@@ -33,6 +33,19 @@ weight.
   the shell from a point derived from the typed character (4 ripple slots); sending → contraction and swirl;
   every streamed word → a radial beat with a travelling band. A second `Points` layer of orbiting sparks and an
   additive core glow complete it.
+- **Lit particle volume.** Each particle is shaded as a point on a lit sphere (warm key light from the upper left
+  plus a steel fresnel rim), so the cloud reads as a rounded volume from every angle.
+- **Pearl nucleus (high + medium).** An undisplaced `MeshPhysicalMaterial` sphere (clearcoat + iridescence) lit by
+  three.js `RoomEnvironment` through `PMREMGenerator`: studio light made in code, no HDRI. It breathes with
+  typing and glows signal yellow while Nova thinks or answers.
+- **Synapse filaments (high + medium).** One `LineSegments` of great-circle arcs between shell points, with a
+  pulse that runs along each arc; they breathe with the shell (shared GLSL) and flare while thinking.
+- **Intro: the orb switches on.** Particles converge from far out with per-particle delays, then the glow and the
+  nucleus light up. The headline is never hidden: it paints first and only gets a transform-only rise.
+- **The mind opens.** Halfway between the hero and the demo, the orb flies apart into a tilted disc of thought
+  while the field of view narrows (a dolly-zoom feel without moving the camera), then closes again beside the chat.
+- **Mind modes.** Calm / Focus / Bright buttons in the demo card change uniform presets (no rebuild); remembered.
+- **Bokeh (high tier).** Near particles grow and flatten into soft discs for depth, at zero extra draw calls.
 - **DOM ↔ 3D bridge**: a tiny mutable signal module (`src/lib/orb-signal.ts`), read inside `useFrame` — no React
   renders per frame, no allocations per frame.
 
@@ -51,16 +64,20 @@ weight.
 - Software WebGL (SwiftShader, llvmpipe, softpipe, Microsoft Basic Render, Mesa offscreen, or a context that only
   exists with `failIfMajorPerformanceCaveat` off) → the 3D chunk is never downloaded and the poster stays.
   `?quality=low|medium|high` still forces the canvas on. The probe is a 1×1 context; three.js is not imported for it.
-- First-load JS for `/`: ~179 KB gzip; the three.js chunk (~240 KB gzip) is requested only after window `load` +
-  `requestIdleCallback` (2.5 s timeout), never during hydration. Particle attributes are generated in slices that
-  yield to the main thread, with one more yield before `compileAsync`.
-- The poster SVG is a server component (in the HTML, never hydrated); the hero headline has no intro animation.
+- First-load JS for `/`: ~181 KB gzip; the three.js chunk (~245 KB gzip) is requested only after window `load` +
+  `requestIdleCallback` (2.5 s timeout), never during hydration (`src/lib/after-idle.ts`). Particle attributes are
+  generated in slices that yield to the main thread, with yields before the environment and `compileAsync`.
+- Section dots, magnetic buttons and the cursor ring are a separate chunk behind the same load + idle gate.
+  The progress bar, split-word headings and the mid-scroll caption are CSS scroll timelines (no JS).
+- The poster SVG is a server component (in the HTML, never hydrated) and mirrors the live scene (nucleus +
+  filaments). The hero headline is the LCP: it is never faded or clipped, only nudged with a transform.
 
 ## Run it
 ```bash
 npm install
 npm run dev      # local development
 npm run build    # production build
+npm run build:pages  # static GitHub Pages mirror in out/ (base path /nova-ai-3d)
 npm run lint
 ```
 On Windows, if the build runs out of memory: `NODE_OPTIONS=--max-old-space-size=3072 npm run build`.
@@ -68,9 +85,10 @@ On Windows, if the build runs out of memory: `NODE_OPTIONS=--max-old-space-size=
 ## Project layout
 ```
 src/app/            layout, page, globals.css (design tokens), 404, OG/Twitter image (PNG), icons, robots, sitemap
-src/components/     Stage (sticky canvas + poster), ChatDemo, Pricing, MotionToggle, MobileMenu, OrbPoster
+src/components/     Stage (sticky canvas + poster), ChatDemo, Pricing, MotionToggle, MobileMenu, OrbPoster,
+                    SplitWords (word reveals), EnhancementsGate + Enhancements (dots, cursor, magnetic buttons)
 src/components/orb/ OrbCanvas (r3f), engine.ts (scene + per-frame logic), shaders.ts (GLSL)
-src/lib/            orb-signal (DOM ↔ 3D), motion preference, quality tiers
+src/lib/            orb-signal (DOM ↔ 3D), mind-mode, motion preference, quality tiers, after-idle, site
 SPEC.md             concept, copy, design system, performance budget
 ```
 

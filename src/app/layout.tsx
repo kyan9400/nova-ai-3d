@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Martian_Mono } from "next/font/google";
 import { motionBootScript } from "@/lib/motion-boot";
+import { IS_PAGES, PAGES_ORIGIN, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 // Archivo is variable on weight AND width: the expanded display cut and the body text share one file.
@@ -18,22 +19,21 @@ const mono = Martian_Mono({
   preload: false,
 });
 
-const SITE_URL = "https://nova-ai-3d-xi.vercel.app";
 const TITLE = "Nova — a mind that listens before it speaks";
 const DESCRIPTION =
   "Nova reads your team's docs, meetings and tickets and answers in seconds, with the source attached. Talk to the particle orb and see it think.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+  metadataBase: new URL(IS_PAGES ? PAGES_ORIGIN : SITE_URL),
   title: { default: TITLE, template: "%s · Nova" },
   description: DESCRIPTION,
   applicationName: "Nova",
   authors: [{ name: "Alhassan Alfarran", url: "https://alhassan-portfolio-sigma.vercel.app" }],
   creator: "Alhassan Alfarran",
-  alternates: { canonical: "/" },
+  alternates: { canonical: `${SITE_URL}/` },
   openGraph: {
     type: "website",
-    url: "/",
+    url: `${SITE_URL}/`,
     siteName: "Nova",
     title: TITLE,
     description: DESCRIPTION,

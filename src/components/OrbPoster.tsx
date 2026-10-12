@@ -2,6 +2,8 @@
   Code-drawn poster of the orb. A server component: the SVG is in the HTML and never hydrates.
   Shown while the 3D chunk loads and warms up, and permanently when WebGL is missing, is a software
   renderer, or the context is lost. Stage hides it (opacity only) via .stage-layer.is-live.
+  It mirrors the live scene: far-side particles, the pearl nucleus, faint filament arcs, near-side particles.
+  Node budget: <= 400 SVG elements.
 */
 
 const hash = (n: number) => {
@@ -10,34 +12,83 @@ const hash = (n: number) => {
 };
 
 const COLORS = ["#c8cbd2", "#c8cbd2", "#8e9097", "#f4f3ee", "#ffd60a"];
+const TILT = 0.45;
+const R = 150;
+
+type Dot = { x: number; y: number; r: number; o: number; c: string; z: number };
+
+/** Unit Fibonacci-sphere point, tilted around x so the poles read as a sphere. */
+function fib(i: number, count: number) {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const y = 1 - ((i + 0.5) / count) * 2;
+  const rad = Math.sqrt(1 - y * y);
+  const th = golden * i;
+  const x = Math.cos(th) * rad;
+  const z = Math.sin(th) * rad;
+  return { x, y: y * Math.cos(TILT) - z * Math.sin(TILT), z: y * Math.sin(TILT) + z * Math.cos(TILT) };
+}
 
 function buildDots(count: number) {
-  const dots: { x: number; y: number; r: number; o: number; c: string }[] = [];
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  const tilt = 0.45;
+  const dots: Dot[] = [];
   for (let i = 0; i < count; i++) {
-    const y = 1 - ((i + 0.5) / count) * 2;
-    const rad = Math.sqrt(1 - y * y);
-    const th = golden * i;
-    const x = Math.cos(th) * rad;
-    const z = Math.sin(th) * rad;
-    // tilt around x so the poles read as a sphere
-    const y2 = y * Math.cos(tilt) - z * Math.sin(tilt);
-    const z2 = y * Math.sin(tilt) + z * Math.cos(tilt);
+    const p = fib(i, count);
     const wobble = 1 + (hash(i) - 0.5) * 0.14;
-    const depth = (z2 + 1) / 2;
+    const depth = (p.z + 1) / 2;
+    // same warm key light from the upper left as the shader, so the poster is lit like the live orb
+    const light = 0.35 + 0.65 * Math.max(0, -0.5 * p.x - 0.7 * p.y + 0.6 * p.z);
     dots.push({
-      x: 200 + x * 150 * wobble,
-      y: 200 + y2 * 150 * wobble,
+      x: 200 + p.x * R * wobble,
+      y: 200 + p.y * R * wobble,
       r: Number((0.8 + depth * 1.9).toFixed(2)),
-      o: Number((0.15 + depth * 0.8).toFixed(2)),
+      o: Number(((0.15 + depth * 0.8) * (0.55 + 0.45 * light)).toFixed(2)),
       c: COLORS[Math.floor(hash(i * 3.1) * COLORS.length)],
+      z: p.z,
     });
   }
   return dots;
 }
 
-const DOTS = buildDots(340);
+/** A filament: a great-circle arc between two shell points, lifted outward in the middle. */
+function arc(a: number, b: number, count: number) {
+  const A = fib(a, count);
+  const B = fib(b, count);
+  const dot = A.x * B.x + A.y * B.y + A.z * B.z;
+  const om = Math.acos(Math.max(-1, Math.min(1, dot)));
+  const pts: string[] = [];
+  for (let k = 0; k <= 12; k++) {
+    const t = k / 12;
+    const s = Math.sin(om) || 1;
+    const wa = Math.sin((1 - t) * om) / s;
+    const wb = Math.sin(t * om) / s;
+    const lift = 1 + Math.sin(Math.PI * t) * 0.12;
+    pts.push(`${(200 + (A.x * wa + B.x * wb) * R * lift).toFixed(1)},${(200 + (A.y * wa + B.y * wb) * R * lift).toFixed(1)}`);
+  }
+  return `M${pts.join("L")}`;
+}
+
+const COUNT = 340;
+const DOTS = buildDots(COUNT);
+const BACK = DOTS.filter((d) => d.z < 0);
+const FRONT = DOTS.filter((d) => d.z >= 0);
+
+/** 7 filament pairs on the near side, 25-70 degrees apart, chosen deterministically. */
+function pickArcs(n: number) {
+  const out: string[] = [];
+  for (let k = 0; out.length < n && k < 400; k++) {
+    const a = Math.floor(hash(k * 7.7 + 1) * COUNT);
+    const b = Math.floor(hash(k * 3.9 + 5) * COUNT);
+    const A = fib(a, COUNT);
+    const B = fib(b, COUNT);
+    const ang = (Math.acos(Math.max(-1, Math.min(1, A.x * B.x + A.y * B.y + A.z * B.z))) * 180) / Math.PI;
+    if (A.z > 0.15 && B.z > 0.15 && ang >= 25 && ang <= 70) out.push(arc(a, b, COUNT));
+  }
+  return out;
+}
+const ARCS = pickArcs(7);
+
+function DotList({ dots }: { dots: Dot[] }) {
+  return dots.map((d, i) => <circle key={i} cx={d.x.toFixed(1)} cy={d.y.toFixed(1)} r={d.r} fill={d.c} fillOpacity={d.o} />);
+}
 
 export default function OrbPoster() {
   return (
@@ -49,13 +100,27 @@ export default function OrbPoster() {
             <stop offset="35%" stopColor="#c8cbd2" stopOpacity="0.12" />
             <stop offset="100%" stopColor="#0a0a0b" stopOpacity="0" />
           </radialGradient>
+          {/* pearl nucleus: dark lacquer with a soft highlight upper left and an iridescent rim */}
+          <radialGradient id="poster-pearl" cx="36%" cy="32%" r="72%">
+            <stop offset="0%" stopColor="#f4f3ee" stopOpacity="0.9" />
+            <stop offset="14%" stopColor="#8e9097" />
+            <stop offset="46%" stopColor="#1b1b1d" />
+            <stop offset="86%" stopColor="#141416" />
+            <stop offset="100%" stopColor="#c8cbd2" />
+          </radialGradient>
         </defs>
         <circle cx="200" cy="200" r="200" fill="url(#poster-glow)" />
         <ellipse cx="200" cy="200" rx="186" ry="58" fill="none" stroke="#ffd60a" strokeOpacity="0.24" transform="rotate(-18 200 200)" />
         <ellipse cx="200" cy="200" rx="176" ry="40" fill="none" stroke="#c8cbd2" strokeOpacity="0.18" transform="rotate(24 200 200)" />
-        {DOTS.map((d, i) => (
-          <circle key={i} cx={d.x.toFixed(1)} cy={d.y.toFixed(1)} r={d.r} fill={d.c} fillOpacity={d.o} />
-        ))}
+        <DotList dots={BACK} />
+        <circle cx="200" cy="200" r="42" fill="url(#poster-pearl)" />
+        <circle cx="200" cy="200" r="42" fill="none" stroke="#ffd60a" strokeOpacity="0.28" strokeWidth="0.8" />
+        <g fill="none" stroke="#c8cbd2" strokeOpacity="0.22" strokeWidth="0.7" strokeLinecap="round">
+          {ARCS.map((d, i) => (
+            <path key={i} d={d} />
+          ))}
+        </g>
+        <DotList dots={FRONT} />
       </svg>
     </div>
   );
