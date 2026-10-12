@@ -14,18 +14,34 @@ export type TierSettings = {
   sparks: number;
   dprCap: number;
   antialias: boolean;
-  /** pearl nucleus (MeshPhysicalMaterial + RoomEnvironment) */
-  nucleus: boolean;
+  /** glass core sphere segments (width; height is 3/4 of it) */
+  glassSegments: number;
   /** synapse filament arcs (0 = none) */
   filaments: number;
+  /** light streams: loops x points per loop */
+  streams: number;
+  streamPoints: number;
+  /** depth dust motes around the mind */
+  dust: number;
+  /** light rays in the halo */
+  rays: boolean;
   /** near particles grow and soften (depth of field feel) */
   bokeh: boolean;
 };
 
 export const TIERS: Record<Tier, TierSettings> = {
-  high: { particles: 60000, sparks: 900, dprCap: 2, antialias: true, nucleus: true, filaments: 160, bokeh: true },
-  medium: { particles: 26000, sparks: 500, dprCap: 1.5, antialias: true, nucleus: true, filaments: 90, bokeh: false },
-  low: { particles: 9000, sparks: 220, dprCap: 1, antialias: false, nucleus: false, filaments: 0, bokeh: false },
+  high: {
+    particles: 44000, sparks: 900, dprCap: 2, antialias: true, glassSegments: 96, filaments: 220,
+    streams: 36, streamPoints: 560, dust: 2400, rays: true, bokeh: true,
+  },
+  medium: {
+    particles: 20000, sparks: 500, dprCap: 1.5, antialias: true, glassSegments: 64, filaments: 120,
+    streams: 22, streamPoints: 380, dust: 1200, rays: true, bokeh: false,
+  },
+  low: {
+    particles: 8000, sparks: 220, dprCap: 1, antialias: false, glassSegments: 40, filaments: 0,
+    streams: 12, streamPoints: 240, dust: 400, rays: false, bokeh: false,
+  },
 };
 
 const ORDER: Tier[] = ["low", "medium", "high"];

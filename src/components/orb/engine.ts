@@ -1,45 +1,52 @@
 /*
-  The particle mind, as a plain class so the per-frame work never touches React.
-  Hierarchy: root (layout: position/scale from scroll) -> core glow
-                                                     -> tilt (cursor lean + spin) -> nucleus, shell, sparks, filaments
-  Draw order: glow -> nucleus -> shell -> sparks/filaments (glow and nucleus sit in the opaque pass).
+  Nova's mind, as a plain class so the per-frame work never touches React.
+  Hierarchy: world -> dust (depth layer, parallax)
+                   -> root (layout: position/scale from scroll) -> halo quad (glow, rays, waveform, sound rings)
+                                                                -> tilt (cursor lean + spin) -> glass core, shell,
+                                                                   light streams, sparks, filaments
+  Draw order: halo -> glass (opaque pass, writes depth so it hides far-side particles) -> dust/shell -> streams/sparks/filaments.
   Everything that changes per frame is preallocated here (no allocations in update()).
+  Noise for every shader is one 32^3 RGBA texture (buildNoise), not inline GLSL noise: fast to compile on ANGLE.
 */
 import {
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Color,
+  Data3DTexture,
   Group,
+  LinearFilter,
   LineSegments,
   Mesh,
-  MeshPhysicalMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  PMREMGenerator,
   Points,
   Quaternion,
   Raycaster,
+  RepeatWrapping,
+  RGBAFormat,
   ShaderMaterial,
   Sphere,
   SphereGeometry,
+  UnsignedByteType,
   Vector2,
   Vector3,
   Vector4,
-  type WebGLRenderer,
-  type WebGLRenderTarget,
 } from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { orbSignal } from "@/lib/orb-signal";
 import type { TierSettings } from "@/lib/quality";
 import {
-  coreFragment,
-  coreVertex,
+  dustVertex,
   filamentFragment,
   filamentVertex,
+  glassFragment,
+  glassVertex,
+  haloFragment,
+  haloVertex,
   pointFragment,
   shellVertex,
   sparkVertex,
+  streamVertex,
 } from "./shaders";
 
 const CAM_Z = 4.2;
@@ -47,8 +54,15 @@ const FOV = 40;
 const FOV_OPEN = 32;
 const HALF_H = CAM_Z * Math.tan(((FOV / 2) * Math.PI) / 180);
 const RADIUS = 1.15;
+const GLASS_R = 0.6;
 const INTRO_S = 1.8;
 const ARC_SEGMENTS = 12;
+const NOISE_N = 32;
+
+// chapter palettes: [key, light, deep accent] as linear-ish RGB
+const PAL_LISTEN = [1.0, 0.72, 0.16, 1.0, 0.9, 0.72, 0.95, 0.42, 0.1];
+const PAL_THINK = [0.4, 0.68, 1.0, 0.82, 0.9, 1.0, 0.58, 0.36, 1.0];
+const PAL_SPEAK = [1.0, 0.8, 0.04, 1.0, 0.94, 0.66, 1.0, 0.36, 0.08];
 
 // deterministic pseudo-random in [0, 1)
 const hash = (n: number) => {
@@ -72,6 +86,7 @@ export const yieldToMain = () =>
   });
 
 type Attributes = {
+  noise: Uint8Array;
   pos: Float32Array;
   seed: Float32Array;
   orbit: Float32Array;
@@ -79,6 +94,10 @@ type Attributes = {
   filPos: Float32Array;
   filT: Float32Array;
   filSeed: Float32Array;
+  streamA: Float32Array;
+  streamB: Float32Array;
+  dustPos: Float32Array;
+  dustSeed: Float32Array;
 };
 
 const SLICE = 8000;
@@ -94,8 +113,66 @@ function fib(i: number, n: number, out: Float32Array | number[], o = 0) {
   out[o + 2] = Math.sin(th) * r;
 }
 
-/** Shell, spark and filament attributes, generated in slices with a yield between them. */
-async function buildAttributes(particles: number, sparks: number, filaments: number): Promise<Attributes> {
+/**
+ * Tileable smooth value noise, 4 decorrelated channels, two octaves (8 and 16 cells per period),
+ * stretched to the full 0..255 range. Sampled in GLSL with q * 0.125, so one cell = one unit of q.
+ */
+async function buildNoise(): Promise<Uint8Array> {
+  const N = NOISE_N;
+  const out = new Uint8Array(N * N * N * 4);
+  const acc = new Float32Array(N * N * N);
+  const sm = (x: number) => x * x * (3 - 2 * x);
+  for (let c = 0; c < 4; c++) {
+    acc.fill(0);
+    for (const [P, w] of [
+      [8, 1],
+      [16, 0.35],
+    ]) {
+      const lat = new Float32Array(P * P * P);
+      for (let i = 0; i < lat.length; i++) lat[i] = hash(i * 1.618 + c * 97.3 + P * 13.1);
+      const L = (x: number, y: number, z: number) => lat[(x % P) + (y % P) * P + (z % P) * P * P];
+      const k = P / N;
+      for (let z = 0; z < N; z++) {
+        const fz = z * k;
+        const iz = Math.floor(fz);
+        const tz = sm(fz - iz);
+        for (let y = 0; y < N; y++) {
+          const fy = y * k;
+          const iy = Math.floor(fy);
+          const ty = sm(fy - iy);
+          for (let x = 0; x < N; x++) {
+            const fx = x * k;
+            const ix = Math.floor(fx);
+            const tx = sm(fx - ix);
+            const a = L(ix, iy, iz) + (L(ix + 1, iy, iz) - L(ix, iy, iz)) * tx;
+            const b = L(ix, iy + 1, iz) + (L(ix + 1, iy + 1, iz) - L(ix, iy + 1, iz)) * tx;
+            const cc = L(ix, iy, iz + 1) + (L(ix + 1, iy, iz + 1) - L(ix, iy, iz + 1)) * tx;
+            const d = L(ix, iy + 1, iz + 1) + (L(ix + 1, iy + 1, iz + 1) - L(ix, iy + 1, iz + 1)) * tx;
+            const ab = a + (b - a) * ty;
+            const cd = cc + (d - cc) * ty;
+            acc[x + y * N + z * N * N] += (ab + (cd - ab) * tz) * w;
+          }
+        }
+      }
+    }
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < acc.length; i++) {
+      if (acc[i] < lo) lo = acc[i];
+      if (acc[i] > hi) hi = acc[i];
+    }
+    const span = hi - lo || 1;
+    for (let i = 0; i < acc.length; i++) out[i * 4 + c] = Math.round(((acc[i] - lo) / span) * 255);
+    await yieldToMain();
+  }
+  return out;
+}
+
+/** Every attribute buffer, generated in slices with a yield between them. */
+async function buildAttributes(s: TierSettings): Promise<Attributes> {
+  const noise = await buildNoise();
+  const { particles, sparks, filaments } = s;
+
   // --- shell: Fibonacci sphere home points + 4 random seeds per particle
   const pos = new Float32Array(particles * 3);
   const seed = new Float32Array(particles * 4);
@@ -123,6 +200,45 @@ async function buildAttributes(particles: number, sparks: number, filaments: num
     twinkle[i] = hash(i * 5.5 + 2.2);
   }
 
+  // --- light streams: comet trails on tilted loops (per point: s, radius, speed, phase | tilt x, tilt z, wobble, hue)
+  const sCount = s.streams * s.streamPoints;
+  const streamA = new Float32Array(sCount * 4);
+  const streamB = new Float32Array(sCount * 4);
+  for (let k = 0; k < s.streams; k++) {
+    const radius = 0.72 + hash(k * 3.7 + 1.1) * 0.5;
+    const speed = (0.35 + hash(k * 6.1) * 0.45) * (k % 3 === 0 ? -1 : 1);
+    const phase = hash(k * 2.3 + 0.7);
+    const tiltX = (hash(k * 4.9) - 0.5) * 2.6;
+    const tiltZ = (hash(k * 8.3 + 2) - 0.5) * 2.2;
+    const wobble = 0.05 + hash(k * 5.7) * 0.22;
+    const hue = hash(k * 9.1 + 4.4);
+    for (let j = 0; j < s.streamPoints; j++) {
+      const v = k * s.streamPoints + j;
+      streamA[v * 4] = j / (s.streamPoints - 1);
+      streamA[v * 4 + 1] = radius;
+      streamA[v * 4 + 2] = speed;
+      streamA[v * 4 + 3] = phase;
+      streamB[v * 4] = tiltX;
+      streamB[v * 4 + 1] = tiltZ;
+      streamB[v * 4 + 2] = wobble;
+      streamB[v * 4 + 3] = hue;
+    }
+  }
+
+  // --- dust: a deep field of motes, mostly behind the mind, a few close to the camera (bokeh)
+  const dustPos = new Float32Array(s.dust * 3);
+  const dustSeed = new Float32Array(s.dust * 4);
+  for (let i = 0; i < s.dust; i++) {
+    dustPos[i * 3] = (hash(i * 1.7 + 0.2) - 0.5) * 14;
+    dustPos[i * 3 + 1] = (hash(i * 2.9 + 1.3) - 0.5) * 8;
+    dustPos[i * 3 + 2] = -6.5 + Math.pow(hash(i * 3.1 + 2.4), 0.8) * 9.2;
+    dustSeed[i * 4] = hash(i * 4.3);
+    dustSeed[i * 4 + 1] = hash(i * 5.9 + 1);
+    dustSeed[i * 4 + 2] = hash(i * 7.7 + 2);
+    dustSeed[i * 4 + 3] = Math.pow(hash(i * 8.8 + 3), 2);
+  }
+  await yieldToMain();
+
   // --- filaments: great-circle arcs between shell points 25-70 degrees apart, lifted by sin(pi t) * 0.12
   const verts = filaments * ARC_SEGMENTS * 2;
   const filPos = new Float32Array(verts * 3);
@@ -145,9 +261,9 @@ async function buildAttributes(particles: number, sparks: number, filaments: num
     const so = Math.sin(om) || 1;
     const phase = hash(k * 8.1);
     const speed = hash(k * 2.9 + 4);
-    for (let s = 0; s < ARC_SEGMENTS; s++) {
+    for (let sg = 0; sg < ARC_SEGMENTS; sg++) {
       for (let e = 0; e < 2; e++) {
-        const t = (s + e) / ARC_SEGMENTS;
+        const t = (sg + e) / ARC_SEGMENTS;
         const wa = Math.sin((1 - t) * om) / so;
         const wb = Math.sin(t * om) / so;
         const lift = 1 + Math.sin(Math.PI * t) * 0.12;
@@ -162,31 +278,45 @@ async function buildAttributes(particles: number, sparks: number, filaments: num
     }
   }
   await yieldToMain();
-  return { pos, seed, orbit, twinkle, filPos, filT, filSeed };
+  return { noise, pos, seed, orbit, twinkle, filPos, filT, filSeed, streamA, streamB, dustPos, dustSeed };
 }
 
-export const CAMERA = { position: [0, 0, CAM_Z] as [number, number, number], fov: FOV, near: 0.1, far: 20 };
+export const CAMERA = { position: [0, 0, CAM_Z] as [number, number, number], fov: FOV, near: 0.1, far: 30 };
 
-const SIGNAL = new Color(0xffd60a);
+const additivePoints = { transparent: true, depthWrite: false, depthTest: true, blending: AdditiveBlending };
 
 export class OrbEngine {
-  readonly root = new Group();
+  /** the object R3F mounts */
+  readonly world = new Group();
+  private readonly root = new Group();
   private readonly tilt = new Group();
-  private readonly shellGeo = new BufferGeometry();
-  private readonly sparkGeo = new BufferGeometry();
-  private readonly coreGeo = new PlaneGeometry(4.2, 4.2);
+  private readonly dust = new Group();
+  private readonly noiseTex: Data3DTexture;
+  private readonly geos: BufferGeometry[] = [];
+  private readonly mats: ShaderMaterial[] = [];
   private readonly shellMat: ShaderMaterial;
   private readonly sparkMat: ShaderMaterial;
-  private readonly coreMat: ShaderMaterial;
-  private readonly baseSize: number;
-  // optional per tier
-  private readonly nucleus: Mesh<SphereGeometry, MeshPhysicalMaterial> | null = null;
-  private readonly filGeo: BufferGeometry | null = null;
+  private readonly streamMat: ShaderMaterial;
+  private readonly haloMat: ShaderMaterial;
+  private readonly glassMat: ShaderMaterial;
+  private readonly glass: Mesh;
+  private readonly dustMat: ShaderMaterial | null = null;
   private readonly filMat: ShaderMaterial | null = null;
-  private envTarget: WebGLRenderTarget | null = null;
+  private readonly baseSize: number;
+
+  // chapter palette, shared by reference with every material's uColA / uColB / uColC
+  private readonly colA = new Color();
+  private readonly colB = new Color();
+  private readonly colC = new Color();
+  private wL = 1;
+  private wT = 0;
+  private wS = 0;
 
   // smoothed state
   private time = 0;
+  private flow = 0;
+  private waveT = 0;
+  private ringDir = 0;
   private energy = 0;
   private think = 0;
   private swirl = 0;
@@ -221,160 +351,250 @@ export class OrbEngine {
 
   /** Build the engine in short, yielding steps so no single task blocks the main thread for long. */
   static async create(settings: TierSettings): Promise<OrbEngine> {
-    const attrs = await buildAttributes(settings.particles, settings.sparks, settings.filaments);
+    const attrs = await buildAttributes(settings);
     return new OrbEngine(settings, attrs);
+  }
+
+  private geo(attrs: Record<string, [Float32Array, number]>, radius: number) {
+    const g = new BufferGeometry();
+    for (const name in attrs) g.setAttribute(name, new BufferAttribute(attrs[name][0], attrs[name][1]));
+    g.boundingSphere = new Sphere(new Vector3(), radius);
+    this.geos.push(g);
+    return g;
+  }
+
+  private mat(m: ShaderMaterial) {
+    this.mats.push(m);
+    return m;
   }
 
   private constructor(settings: TierSettings, attrs: Attributes) {
     const { particles } = settings;
-    this.shellGeo.setAttribute("position", new BufferAttribute(attrs.pos, 3));
-    this.shellGeo.setAttribute("aSeed", new BufferAttribute(attrs.seed, 4));
-    this.shellGeo.boundingSphere = new Sphere(new Vector3(), 2);
+    const tex = new Data3DTexture(attrs.noise, NOISE_N, NOISE_N, NOISE_N);
+    tex.format = RGBAFormat;
+    tex.type = UnsignedByteType;
+    tex.minFilter = LinearFilter;
+    tex.magFilter = LinearFilter;
+    tex.wrapS = tex.wrapT = tex.wrapR = RepeatWrapping;
+    tex.unpackAlignment = 1;
+    tex.needsUpdate = true;
+    this.noiseTex = tex;
+    this.applyPalette();
+
+    const palette = { uColA: { value: this.colA }, uColB: { value: this.colB }, uColC: { value: this.colC } };
+    const noise = { uNoise: { value: tex } };
 
     // fewer particles -> slightly bigger points so the orb keeps its density
     this.baseSize = 10.5 * Math.pow(60000 / particles, 0.33);
 
-    // shell and sparks test depth (the nucleus hides far-side particles) but never write it
-    this.shellMat = new ShaderMaterial({
-      vertexShader: shellVertex,
-      fragmentShader: pointFragment,
-      defines: settings.bokeh ? { BOKEH: "" } : {},
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      blending: AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uEnergy: { value: 0 },
-        uThink: { value: 0 },
-        uSpeak: { value: 0 },
-        uSwirl: { value: 0 },
-        uSize: { value: this.baseSize },
-        uPixelRatio: { value: 1 },
-        uPointer: { value: this.pointerDir },
-        uPointerStrength: { value: 0 },
-        uRipples: { value: this.ripples },
-        uIntro: { value: 0 },
-        uOpen: { value: 0 },
-        uFocus: { value: 0 },
-        uBright: { value: 0 },
-      },
-    });
-    const shell = new Points(this.shellGeo, this.shellMat);
-    shell.frustumCulled = false;
-    shell.renderOrder = 1;
-
-    // --- sparks (attributes from buildAttributes)
-    const sparkPos = new Float32Array(settings.sparks * 3);
-    this.sparkGeo.setAttribute("position", new BufferAttribute(sparkPos, 3));
-    this.sparkGeo.setAttribute("aOrbit", new BufferAttribute(attrs.orbit, 4));
-    this.sparkGeo.setAttribute("aTwinkle", new BufferAttribute(attrs.twinkle, 1));
-    this.sparkGeo.boundingSphere = new Sphere(new Vector3(), 2);
-    this.sparkMat = new ShaderMaterial({
-      vertexShader: sparkVertex,
-      fragmentShader: pointFragment,
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      blending: AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uThink: { value: 0 },
-        uSpin: { value: 0 },
-        uSize: { value: 14 },
-        uPixelRatio: { value: 1 },
-        uIntro: { value: 0 },
-        uOpen: { value: 0 },
-      },
-    });
-    const sparkPoints = new Points(this.sparkGeo, this.sparkMat);
-    sparkPoints.frustumCulled = false;
-    sparkPoints.renderOrder = 2;
-
-    // --- core glow (a camera-facing quad; the camera never rotates). transparent: false puts it in the
-    // opaque pass so it draws before the nucleus; additive blending still applies.
-    this.coreMat = new ShaderMaterial({
-      vertexShader: coreVertex,
-      fragmentShader: coreFragment,
-      transparent: false,
-      depthWrite: false,
-      depthTest: false,
-      blending: AdditiveBlending,
-      uniforms: { uEnergy: { value: 0 }, uThink: { value: 0 }, uSpeak: { value: 0 }, uIntro: { value: 0 } },
-    });
-    const core = new Mesh(this.coreGeo, this.coreMat);
-    core.renderOrder = -1;
-    this.root.add(core, this.tilt);
-
-    // --- pearl nucleus: a real material, undisplaced so its normals stay perfectly smooth
-    if (settings.nucleus) {
-      const mat = new MeshPhysicalMaterial({
-        color: 0x1b1b1d,
-        metalness: 0.2,
-        roughness: 0.18,
-        clearcoat: 1,
-        clearcoatRoughness: 0.06,
-        iridescence: 1,
-        iridescenceIOR: 1.3,
-        iridescenceThicknessRange: [180, 520],
-        emissive: SIGNAL,
-        emissiveIntensity: 0,
-      });
-      this.nucleus = new Mesh(new SphereGeometry(0.34, 96, 64), mat);
-      this.nucleus.rotation.x = 0.3;
-      this.tilt.add(this.nucleus);
-    }
-
-    this.tilt.add(shell, sparkPoints);
-
-    // --- synapse filaments: one LineSegments, pulses travel along each arc
-    if (settings.filaments > 0) {
-      const geo = new BufferGeometry();
-      geo.setAttribute("position", new BufferAttribute(attrs.filPos, 3));
-      geo.setAttribute("aT", new BufferAttribute(attrs.filT, 1));
-      geo.setAttribute("aSeed", new BufferAttribute(attrs.filSeed, 2));
-      geo.boundingSphere = new Sphere(new Vector3(), 2);
-      const mat = new ShaderMaterial({
-        vertexShader: filamentVertex,
-        fragmentShader: filamentFragment,
-        transparent: true,
+    // --- halo: glow, rays, waveform and sound rings on one camera-facing quad (camera never rotates)
+    this.haloMat = this.mat(
+      new ShaderMaterial({
+        vertexShader: haloVertex,
+        fragmentShader: haloFragment,
+        defines: settings.rays ? { RAYS: "" } : {},
+        transparent: false,
         depthWrite: false,
-        depthTest: true,
+        depthTest: false,
         blending: AdditiveBlending,
         uniforms: {
+          ...noise,
+          ...palette,
+          uTime: { value: 0 },
+          uWaveT: { value: 0 },
+          uDir: { value: 0 },
+          uLevel: { value: 0 },
+          uRing: { value: 0 },
+          uRays: { value: 0 },
+          uGlow: { value: 0 },
+          uIntro: { value: 0 },
+        },
+      }),
+    );
+    const haloGeo = new PlaneGeometry(7, 7);
+    this.geos.push(haloGeo);
+    const halo = new Mesh(haloGeo, this.haloMat);
+    halo.renderOrder = -2;
+    halo.frustumCulled = false;
+
+    // --- glass core: opaque dark glass, writes depth (hides far-side particles and the halo behind it)
+    this.glassMat = this.mat(
+      new ShaderMaterial({
+        vertexShader: glassVertex,
+        fragmentShader: glassFragment,
+        transparent: false,
+        depthWrite: true,
+        depthTest: true,
+        uniforms: { ...noise, ...palette, uTime: { value: 0 }, uGlow: { value: 0 }, uIntro: { value: 0 } },
+      }),
+    );
+    const glassGeo = new SphereGeometry(GLASS_R, settings.glassSegments, Math.round(settings.glassSegments * 0.75));
+    this.geos.push(glassGeo);
+    this.glass = new Mesh(glassGeo, this.glassMat);
+    this.glass.renderOrder = -1;
+
+    // --- shell
+    this.shellMat = this.mat(
+      new ShaderMaterial({
+        vertexShader: shellVertex,
+        fragmentShader: pointFragment,
+        defines: settings.bokeh ? { BOKEH: "" } : {},
+        ...additivePoints,
+        uniforms: {
+          ...noise,
+          ...palette,
           uTime: { value: 0 },
           uEnergy: { value: 0 },
           uThink: { value: 0 },
+          uSpeak: { value: 0 },
           uSwirl: { value: 0 },
+          uSize: { value: this.baseSize },
+          uPixelRatio: { value: 1 },
+          uPointer: { value: this.pointerDir },
+          uPointerStrength: { value: 0 },
+          uRipples: { value: this.ripples },
+          uIntro: { value: 0 },
           uOpen: { value: 0 },
-          uVis: { value: 0 },
+          uListen: { value: 0 },
+          uFocus: { value: 0 },
+          uBright: { value: 0 },
         },
-      });
-      const lines = new LineSegments(geo, mat);
+      }),
+    );
+    const shell = new Points(this.geo({ position: [attrs.pos, 3], aSeed: [attrs.seed, 4] }, 2), this.shellMat);
+    shell.frustumCulled = false;
+    shell.renderOrder = 1;
+
+    // --- light streams
+    const sCount = settings.streams * settings.streamPoints;
+    this.streamMat = this.mat(
+      new ShaderMaterial({
+        vertexShader: streamVertex,
+        fragmentShader: pointFragment,
+        ...additivePoints,
+        uniforms: {
+          ...noise,
+          ...palette,
+          uTime: { value: 0 },
+          uFlow: { value: 0 },
+          uThink: { value: 0 },
+          uSpeak: { value: 0 },
+          uOpen: { value: 0 },
+          uSize: { value: 14 },
+          uPixelRatio: { value: 1 },
+          uIntro: { value: 0 },
+        },
+      }),
+    );
+    const streams = new Points(
+      this.geo(
+        { position: [new Float32Array(sCount * 3), 3], aA: [attrs.streamA, 4], aB: [attrs.streamB, 4] },
+        2.5,
+      ),
+      this.streamMat,
+    );
+    streams.frustumCulled = false;
+    streams.renderOrder = 2;
+
+    // --- sparks
+    this.sparkMat = this.mat(
+      new ShaderMaterial({
+        vertexShader: sparkVertex,
+        fragmentShader: pointFragment,
+        ...additivePoints,
+        uniforms: {
+          ...palette,
+          uTime: { value: 0 },
+          uThink: { value: 0 },
+          uSpin: { value: 0 },
+          uSize: { value: 14 },
+          uPixelRatio: { value: 1 },
+          uIntro: { value: 0 },
+          uOpen: { value: 0 },
+        },
+      }),
+    );
+    const sparkPoints = new Points(
+      this.geo(
+        {
+          position: [new Float32Array(settings.sparks * 3), 3],
+          aOrbit: [attrs.orbit, 4],
+          aTwinkle: [attrs.twinkle, 1],
+        },
+        2,
+      ),
+      this.sparkMat,
+    );
+    sparkPoints.frustumCulled = false;
+    sparkPoints.renderOrder = 2;
+
+    this.root.add(halo, this.tilt);
+    this.tilt.add(this.glass, shell, streams, sparkPoints);
+
+    // --- synapse filaments ("neural lines"): one LineSegments, pulses travel along each arc
+    if (settings.filaments > 0) {
+      const mat = this.mat(
+        new ShaderMaterial({
+          vertexShader: filamentVertex,
+          fragmentShader: filamentFragment,
+          ...additivePoints,
+          uniforms: {
+            ...noise,
+            ...palette,
+            uTime: { value: 0 },
+            uEnergy: { value: 0 },
+            uThink: { value: 0 },
+            uSwirl: { value: 0 },
+            uOpen: { value: 0 },
+            uVis: { value: 0 },
+          },
+        }),
+      );
+      const lines = new LineSegments(
+        this.geo({ position: [attrs.filPos, 3], aT: [attrs.filT, 1], aSeed: [attrs.filSeed, 2] }, 2),
+        mat,
+      );
       lines.frustumCulled = false;
       lines.renderOrder = 2;
       this.tilt.add(lines);
-      this.filGeo = geo;
       this.filMat = mat;
     }
+
+    // --- dust: depth layer outside the root, so it stays put while the mind moves with the scroll
+    if (settings.dust > 0) {
+      const mat = this.mat(
+        new ShaderMaterial({
+          vertexShader: dustVertex,
+          fragmentShader: pointFragment,
+          ...additivePoints,
+          uniforms: {
+            ...palette,
+            uTime: { value: 0 },
+            uSize: { value: 16 },
+            uPixelRatio: { value: 1 },
+            uIntro: { value: 0 },
+          },
+        }),
+      );
+      const pts = new Points(this.geo({ position: [attrs.dustPos, 3], aSeed: [attrs.dustSeed, 4] }, 12), mat);
+      pts.frustumCulled = false;
+      pts.renderOrder = 0;
+      this.dust.add(pts);
+      this.dustMat = mat;
+    }
+    this.world.add(this.dust, this.root);
   }
 
-  /**
-   * Studio lighting for the nucleus: a code-made RoomEnvironment, prefiltered once (no HDRI download).
-   * Needs the renderer, so it runs after the canvas exists and before compileAsync / reveal.
-   */
-  attachEnvironment(renderer: WebGLRenderer) {
-    if (!this.nucleus || this.envTarget) return;
-    const pmrem = new PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
-    this.envTarget = pmrem.fromScene(room, 0.04);
-    this.nucleus.material.envMap = this.envTarget.texture;
-    this.nucleus.material.needsUpdate = true;
-    room.dispose();
-    pmrem.dispose();
+  /** Blend the three chapter palettes by the current weights into the shared colours. */
+  private applyPalette() {
+    const { wL, wT, wS } = this;
+    const mix = (i: number) => PAL_LISTEN[i] * wL + PAL_THINK[i] * wT + PAL_SPEAK[i] * wS;
+    this.colA.setRGB(mix(0), mix(1), mix(2));
+    this.colB.setRGB(mix(3), mix(4), mix(5));
+    this.colC.setRGB(mix(6), mix(7), mix(8));
   }
 
-  /** The orb "switches on": particles converge, then the glow and the nucleus light up. */
+  /** The orb "switches on": particles converge, then the glow and the glass light up. */
   startIntro() {
     this.introOn = true;
   }
@@ -393,7 +613,7 @@ export class OrbEngine {
     if (reduced) this.intro = 1;
     else if (this.introOn && this.intro < 1) this.intro = Math.min(1, this.intro + dt / INTRO_S);
     const introMoving = this.intro < 1 && this.introOn;
-    const lightsOn = easeOut((this.intro - 0.25) / 0.75); // glow + nucleus ramp in behind the particles
+    const lightsOn = easeOut((this.intro - 0.25) / 0.75); // glow + glass ramp in behind the particles
 
     // ---------- layout from scroll: hero -> demo (a cut instead of a sweep in reduced motion)
     const halfW = HALF_H * aspect;
@@ -410,13 +630,13 @@ export class OrbEngine {
     let y: number;
     let scale: number;
     if (aspect >= 1.15) {
-      x = halfW * (0.42 + (-0.45 - 0.42) * t);
-      y = 0;
+      x = halfW * (0.46 + (-0.45 - 0.46) * t);
+      y = HALF_H * 0.03 * (1 - t);
       scale = 1 - 0.1 * t;
     } else {
-      const base = Math.min(0.95, Math.max(0.5, aspect * 1.15));
+      const base = Math.min(0.95, Math.max(0.5, aspect * 1.2));
       x = 0;
-      y = HALF_H * (0.4 + 0.24 * t);
+      y = HALF_H * (0.52 + 0.16 * t);
       scale = base * (1 - 0.42 * t);
     }
     scale *= 1 + 0.35 * open;
@@ -467,6 +687,22 @@ export class OrbEngine {
     const speakFloor = s.speaking ? 0.12 : 0;
     this.speak = speakFloor + (this.speak - speakFloor) * Math.exp(-dt * 5);
 
+    // ---------- chapters: listens (hero, typing) -> thinks (open disc, sending) -> speaks (beside the chat, answering)
+    const cL = 1 - smoothstep(0, 0.45, t);
+    const cS = smoothstep(0.55, 1, t);
+    const rL = cL + Math.min(1, this.energy * 1.2);
+    const rT = open + 1.6 * this.think + 0.6 * (s.thinking ? 1 : 0);
+    const rS = cS + 1.4 * this.speak + (s.speaking ? 0.8 : 0);
+    const sum = rL + rT + rS || 1;
+    const kPal = reduced || snap ? 1 : damp(3, dt);
+    this.wL += (rL / sum - this.wL) * kPal;
+    this.wT += (rT / sum - this.wT) * kPal;
+    this.wS += (rS / sum - this.wS) * kPal;
+    this.applyPalette();
+    const paletteMoving = Math.abs(rL / sum - this.wL) + Math.abs(rT / sum - this.wT) > 0.004;
+    const dirTarget = rS > rL ? 1 : 0;
+    this.ringDir += (dirTarget - this.ringDir) * (reduced ? 1 : damp(2, dt));
+
     // ---------- mind mode (Calm / Focus / Bright): damped weights, uniforms only
     const focusTarget = s.mode === 1 ? 1 : 0;
     const brightTarget = s.mode === 2 ? 1 : 0;
@@ -498,13 +734,21 @@ export class OrbEngine {
     const reacting = s.thinking || s.speaking;
     const drift = reduced ? (reacting ? 0.5 : 0) : 1;
     this.time += dt * drift * (1 + this.think * 1.2 + this.energy * 0.6);
+    this.flow += dt * drift * (1 + this.think * 1.8 + this.speak * 1.2 + this.energy * 0.8 + open * 0.8);
+    this.waveT += dt * drift * (1 + this.speak * 2 + this.energy * 2.5);
     this.spin += dt * ((reduced ? 0 : 0.06) + this.think * (reduced ? 0.2 : 0.8));
     this.sparkSpin += dt * ((reduced ? 0 : 0.22) + this.think * 0.7 + this.speak * 0.3);
 
     this.tilt.rotation.set(this.pitch, this.spin + this.yaw, 0);
+    // depth layer: the dust drifts slowly and parallaxes against the cursor and the scroll
+    this.dust.rotation.set(-this.pitch * 0.25, this.time * 0.01 - this.yaw * 0.3, 0);
+    this.dust.position.y = s.scroll * 1.4;
 
     // ---------- uniforms
     const sizeScale = Math.min(1.6, Math.max(0.65, viewportHeight / 900));
+    const listen = Math.max(cL * 0.75, Math.min(1, this.energy * 1.4)) * (1 - open);
+    const glow = lightsOn * (0.3 + 0.8 * this.think + 1.0 * this.speak + 0.5 * open + 0.3 * this.energy + 0.25 * this.bright);
+
     const u = this.shellMat.uniforms;
     u.uTime.value = this.time;
     u.uEnergy.value = this.energy;
@@ -516,8 +760,20 @@ export class OrbEngine {
     u.uPointerStrength.value = this.lean;
     u.uIntro.value = this.intro;
     u.uOpen.value = open;
+    u.uListen.value = listen;
     u.uFocus.value = this.focus;
     u.uBright.value = this.bright;
+
+    const st = this.streamMat.uniforms;
+    st.uTime.value = this.time;
+    st.uFlow.value = this.flow;
+    st.uThink.value = this.think;
+    st.uSpeak.value = this.speak;
+    st.uOpen.value = open;
+    st.uPixelRatio.value = pixelRatio;
+    st.uSize.value = 14 * sizeScale;
+    st.uIntro.value = lightsOn;
+
     const su = this.sparkMat.uniforms;
     su.uTime.value = this.time;
     su.uThink.value = this.think;
@@ -526,19 +782,32 @@ export class OrbEngine {
     su.uSize.value = 14 * sizeScale * (1 + 0.4 * this.bright);
     su.uIntro.value = easeOut(this.intro);
     su.uOpen.value = open;
-    const cu = this.coreMat.uniforms;
-    cu.uEnergy.value = this.energy;
-    cu.uThink.value = this.think;
-    cu.uSpeak.value = this.speak;
-    cu.uIntro.value = lightsOn;
 
-    if (this.nucleus) {
-      // breathes with energy and speech; the core lights up signal yellow when Nova answers
-      const n = this.nucleus;
-      n.scale.setScalar((0.6 + 0.4 * lightsOn) * (1 + 0.06 * this.energy + 0.1 * this.speak));
-      if (!reduced) n.rotation.y += dt * 0.15;
-      const glow = Math.max(0.25 * Math.max(this.speak, this.think), 0.12 * this.bright, 0.3 * open);
-      n.material.emissiveIntensity = lightsOn * Math.min(0.3, glow);
+    const hu = this.haloMat.uniforms;
+    hu.uTime.value = this.time;
+    hu.uWaveT.value = this.waveT;
+    hu.uDir.value = this.ringDir;
+    hu.uLevel.value = (0.45 + 0.45 * cL + 0.3 * cS + this.energy * 1.2 + this.speak) * (1 - 0.75 * open);
+    hu.uRing.value = Math.min(1.5, 0.45 + 0.4 * Math.max(cL, cS) + this.energy + this.speak) * (1 - 0.8 * open);
+    hu.uRays.value = 0.4 + 0.65 * open + 0.4 * this.speak + 0.3 * this.think;
+    hu.uGlow.value = glow;
+    hu.uIntro.value = lightsOn;
+
+    const gu = this.glassMat.uniforms;
+    gu.uTime.value = this.time;
+    gu.uGlow.value = glow;
+    gu.uIntro.value = lightsOn;
+    this.glass.scale.setScalar(
+      (0.6 + 0.4 * lightsOn) * (1 + 0.05 * this.energy + 0.08 * this.speak) * (1 - 0.45 * open),
+    );
+    if (!reduced) this.glass.rotation.y += dt * 0.12;
+
+    if (this.dustMat) {
+      const du = this.dustMat.uniforms;
+      du.uTime.value = this.time;
+      du.uPixelRatio.value = pixelRatio;
+      du.uSize.value = 16 * sizeScale;
+      du.uIntro.value = lightsOn;
     }
 
     if (this.filMat) {
@@ -548,9 +817,9 @@ export class OrbEngine {
       fu.uThink.value = this.think;
       fu.uSwirl.value = this.swirl;
       fu.uOpen.value = open;
-      // 0.08 idle (0.25 in Focus), 0.6 thinking, +0.4 on word beats, 0.5 while the mind is open
-      const idle = 0.08 + 0.17 * this.focus;
-      const vis = Math.max(idle + 0.52 * this.think + 0.4 * this.speak, 0.5 * open);
+      // 0.1 idle (0.25 in Focus), up to 1 thinking / in the open disc, +0.4 on word beats
+      const idle = 0.1 + 0.15 * this.focus;
+      const vis = Math.max(idle + 0.8 * this.think + 0.4 * this.speak, 1.0 * open);
       fu.uVis.value = lightsOn * Math.min(1, vis);
     }
 
@@ -558,28 +827,22 @@ export class OrbEngine {
       layoutMoving ||
       introMoving ||
       modeMoving ||
+      paletteMoving ||
       ripplesAlive ||
       reacting ||
       this.energy > 0.01 ||
       this.think > 0.01 ||
       this.speak > 0.01 ||
+      Math.abs(dirTarget - this.ringDir) > 0.01 ||
       Math.abs(leanTarget - this.lean) > 0.01 ||
       Math.abs(yawTarget - this.yaw) + Math.abs(pitchTarget - this.pitch) > 0.002
     );
   }
 
   dispose() {
-    this.shellGeo.dispose();
-    this.sparkGeo.dispose();
-    this.coreGeo.dispose();
-    this.shellMat.dispose();
-    this.sparkMat.dispose();
-    this.coreMat.dispose();
-    this.nucleus?.geometry.dispose();
-    this.nucleus?.material.dispose();
-    this.envTarget?.dispose();
-    this.filGeo?.dispose();
-    this.filMat?.dispose();
+    for (const g of this.geos) g.dispose();
+    for (const m of this.mats) m.dispose();
+    this.noiseTex.dispose();
   }
 }
 

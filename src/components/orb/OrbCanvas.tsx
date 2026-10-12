@@ -47,14 +47,12 @@ export default function OrbCanvas({ tier, reduced, onReady, onFail }: Props) {
       gl={{
         antialias: settings.antialias,
         alpha: true,
-        depth: true, // the pearl nucleus hides far-side particles
+        depth: true, // the glass core hides far-side particles
         stencil: false,
         powerPreference: "high-performance",
       }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
-        // R3F's default ACES tone mapping (affects only the nucleus; the ShaderMaterials skip it)
-        gl.toneMappingExposure = 1.1;
         gl.domElement.dataset.tier = tier;
         gl.domElement.addEventListener(
           "webglcontextlost",
@@ -98,7 +96,7 @@ function Mind({ engine, cap, reduced, onReady }: MindProps) {
     invalidate();
   }, [reduced, invalidate]);
 
-  // warm-up behind the poster: studio environment for the nucleus, then compile every shader; reveal only when ready
+  // warm-up behind the poster: compile every shader (and upload the noise texture); reveal only when ready
   useEffect(() => {
     let cancelled = false;
     const reveal = () => {
@@ -113,10 +111,6 @@ function Mind({ engine, cap, reduced, onReady }: MindProps) {
     };
     // renderer creation was its own long task: yield once before compiling
     yieldToMain()
-      .then(() => {
-        if (!cancelled) engine.attachEnvironment(gl);
-        return yieldToMain();
-      })
       .then(() => (cancelled ? undefined : gl.compileAsync(scene, camera)))
       .then(reveal, reveal);
     return () => {
@@ -133,5 +127,5 @@ function Mind({ engine, cap, reduced, onReady }: MindProps) {
     if (continuous) state.invalidate();
   });
 
-  return <primitive object={engine.root} />;
+  return <primitive object={engine.world} />;
 }

@@ -2,7 +2,8 @@
   Code-drawn poster of the orb. A server component: the SVG is in the HTML and never hydrates.
   Shown while the 3D chunk loads and warms up, and permanently when WebGL is missing, is a software
   renderer, or the context is lost. Stage hides it (opacity only) via .stage-layer.is-live.
-  It mirrors the live scene: far-side particles, the pearl nucleus, faint filament arcs, near-side particles.
+  It mirrors the live scene: gold halo rings, far-side particles, the dark glass core with its iridescent
+  rim, faint filament arcs, near-side particles.
   Node budget: <= 400 SVG elements.
 */
 
@@ -11,7 +12,7 @@ const hash = (n: number) => {
   return s - Math.floor(s);
 };
 
-const COLORS = ["#c8cbd2", "#c8cbd2", "#8e9097", "#f4f3ee", "#ffd60a"];
+const COLORS = ["#e9d9b0", "#c9a85a", "#8a6a2a", "#fff3cf", "#ffc21a"];
 const TILT = 0.45;
 const R = 150;
 
@@ -96,26 +97,29 @@ export default function OrbPoster() {
       <svg viewBox="0 0 400 400" role="presentation" focusable="false">
         <defs>
           <radialGradient id="poster-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffd60a" stopOpacity="0.34" />
-            <stop offset="35%" stopColor="#c8cbd2" stopOpacity="0.12" />
+            <stop offset="0%" stopColor="#ffb81a" stopOpacity="0.4" />
+            <stop offset="40%" stopColor="#f2a01a" stopOpacity="0.12" />
             <stop offset="100%" stopColor="#0a0a0b" stopOpacity="0" />
           </radialGradient>
-          {/* pearl nucleus: dark lacquer with a soft highlight upper left and an iridescent rim */}
-          <radialGradient id="poster-pearl" cx="36%" cy="32%" r="72%">
-            <stop offset="0%" stopColor="#f4f3ee" stopOpacity="0.9" />
-            <stop offset="14%" stopColor="#8e9097" />
-            <stop offset="46%" stopColor="#1b1b1d" />
-            <stop offset="86%" stopColor="#141416" />
-            <stop offset="100%" stopColor="#c8cbd2" />
+          {/* glass core: dark body, a glint upper left, a warm iridescent rim */}
+          <radialGradient id="poster-pearl" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#2a1e08" />
+            <stop offset="62%" stopColor="#0c0b0d" />
+            <stop offset="88%" stopColor="#3a2410" />
+            <stop offset="97%" stopColor="#e07a9a" />
+            <stop offset="100%" stopColor="#ffd27a" />
           </radialGradient>
         </defs>
         <circle cx="200" cy="200" r="200" fill="url(#poster-glow)" />
-        <ellipse cx="200" cy="200" rx="186" ry="58" fill="none" stroke="#ffd60a" strokeOpacity="0.24" transform="rotate(-18 200 200)" />
-        <ellipse cx="200" cy="200" rx="176" ry="40" fill="none" stroke="#c8cbd2" strokeOpacity="0.18" transform="rotate(24 200 200)" />
+        <circle cx="200" cy="200" r="196" fill="none" stroke="#ffb81a" strokeOpacity="0.3" strokeWidth="1.2" />
+        <circle cx="200" cy="200" r="170" fill="none" stroke="#fff0c0" strokeOpacity="0.14" />
+        <ellipse cx="200" cy="200" rx="186" ry="58" fill="none" stroke="#ffd60a" strokeOpacity="0.3" transform="rotate(-18 200 200)" />
+        <ellipse cx="200" cy="200" rx="176" ry="40" fill="none" stroke="#f4e3b8" strokeOpacity="0.2" transform="rotate(24 200 200)" />
         <DotList dots={BACK} />
-        <circle cx="200" cy="200" r="42" fill="url(#poster-pearl)" />
-        <circle cx="200" cy="200" r="42" fill="none" stroke="#ffd60a" strokeOpacity="0.28" strokeWidth="0.8" />
-        <g fill="none" stroke="#c8cbd2" strokeOpacity="0.22" strokeWidth="0.7" strokeLinecap="round">
+        <circle cx="200" cy="200" r="78" fill="url(#poster-pearl)" />
+        <circle cx="200" cy="200" r="78" fill="none" stroke="#ffd60a" strokeOpacity="0.45" strokeWidth="1" />
+        <circle cx="176" cy="170" r="5" fill="#fff8e6" fillOpacity="0.85" />
+        <g fill="none" stroke="#ffd27a" strokeOpacity="0.26" strokeWidth="0.7" strokeLinecap="round">
           {ARCS.map((d, i) => (
             <path key={i} d={d} />
           ))}

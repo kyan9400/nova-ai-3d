@@ -26,7 +26,7 @@ weight.
 
 ## The signature 3D technique
 - **One draw call, all motion on the GPU.** `THREE.Points` with a custom `ShaderMaterial`. Every particle has a
-  Fibonacci-sphere home and four random seeds; the vertex shader pushes it through a 3D simplex-noise field
+  Fibonacci-sphere home and four random seeds; the vertex shader pushes it through a 3D noise texture
   (three decorrelated samples ≈ curl-like currents) so the shell flows like slow thought.
 - **Uniform-driven reactions** (`src/components/orb/engine.ts`):
   cursor ray hits the sphere → local bulge + highlight; each keystroke → energy + a ring wave that travels across
@@ -93,7 +93,7 @@ SPEC.md             concept, copy, design system, performance budget
 ```
 
 ## Credits
-Fonts (SIL OFL), npm libraries and the simplex-noise code are listed in [CREDITS.md](CREDITS.md).
+Fonts (SIL OFL), and npm libraries are listed in [CREDITS.md](CREDITS.md).
 All 3D is made in code; there are no third-party assets.
 
 ## License

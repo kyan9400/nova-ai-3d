@@ -10,10 +10,7 @@ There are **no third-party 3D models, textures, HDRIs, photos, icons or audio fi
 - **Martian Mono** — Evil Martians (Roman Shamin) — https://fonts.google.com/specimen/Martian+Mono
 
 ## Code
-- 3D simplex noise in GLSL, adapted from **webgl-noise** by Ian McEwan and Stefan Gustavson (Ashima Arts),
-  MIT License — https://github.com/ashima/webgl-noise (used in `src/components/orb/shaders.ts`).
-- **RoomEnvironment** from three.js examples (`three/examples/jsm/environments/RoomEnvironment.js`), MIT License,
-  part of the `three` package — a code-built studio room used to light the pearl nucleus (no HDRI file).
+- Shader noise is a value-noise texture generated in code (`src/components/orb/engine.ts`); no third-party noise code.
 
 ## npm libraries
 | package | license |

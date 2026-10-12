@@ -47,8 +47,8 @@ All copy lives in `src/app/page.tsx`, `src/components/ChatDemo.tsx` and `src/com
 
 ## 4. Signature 3D moment: the particle mind
 - **One draw call for the shell**: `THREE.Points` + custom `ShaderMaterial` (`src/components/orb/shaders.ts`).
-  Each particle has a Fibonacci-sphere home and four random seeds. The vertex shader pushes it through 3D simplex
-  noise (three decorrelated samples ≈ curl-like currents), so the thick shell flows like slow thought.
+  Each particle has a Fibonacci-sphere home and four random seeds. The vertex shader pushes it through a 3D noise
+  texture (three decorrelated channels ≈ curl-like currents), so the thick shell flows like slow thought.
 - **Reactions, all uniforms** (`src/components/orb/engine.ts`):
   - cursor: a ray hits the sphere, then a local bulge + yellow highlight where you point, and the orb tilts toward the cursor;
   - typing: each keystroke adds energy and launches a ring wave across the shell from a point derived from the typed
@@ -57,23 +57,19 @@ All copy lives in `src/app/page.tsx`, `src/components/ChatDemo.tsx` and `src/com
   - answering: a radial beat with a travelling band on every streamed word.
 - **Lit volume**: each particle is shaded as a point on a lit sphere: a warm key light from the upper left
   (`0.35 + 0.65·max(n·L, 0)`) and a steel fresnel rim. Colour is clamped to 1.35 so overlapping yellow never blows out.
-- **Pearl nucleus** (high + medium): `SphereGeometry(0.34, 96, 64)` with `MeshPhysicalMaterial` (clearcoat 1,
-  iridescence 1, roughness 0.18), lit by `RoomEnvironment` prefiltered with `PMREMGenerator` (built once after the
-  renderer exists, before `compileAsync`). Undisplaced, so the normals are perfectly smooth. Its scale breathes with
-  energy and speech and its emissive goes to signal yellow (up to 0.25) while thinking or answering. ACES tone
-  mapping at exposure 1.1 (ShaderMaterials are not tone-mapped). The canvas has a depth buffer: shell, sparks and
-  filaments test depth but never write it, so the nucleus hides far-side particles.
+- **Glass core** (every tier): see "The look" below. It writes depth (the canvas has a depth buffer), so it hides
+  far-side particles and the halo; shell, streams, sparks and filaments test depth but never write it.
 - **Synapse filaments** (high 160 / medium 90): one `LineSegments` of 12-segment great-circle arcs between shell
   points 25°–70° apart, lifted by `sin(πt)·0.12`, with a travelling pulse (steel body, signal head). They share the
   shell's breathing GLSL, so they stay attached. Visibility ≈ 0.08 idle, 0.6 thinking, +0.4 on word beats.
 - **Intro**: `uIntro` 0 → 1 over 1.8 s after reveal. Each particle converges from `home·(2.6 + seed·1.2)` with a
-  per-particle delay, then the glow and nucleus light up. Instant in reduced motion.
+  per-particle delay, then the glow and the glass core light up. Instant in reduced motion.
 - **The mind opens** (the scroll moment): `open = sin(π·t)` over the hero → demo progress. Particles fly out along
   `dir·(1 + open·(0.6 + 1.6·seed))`, flatten into a tilted, swirling disc, sparks move to the rim, the root scale
-  grows ×1.35 while the camera FOV narrows 40 → 32 (dolly-zoom feel), the nucleus glows (0.3) and filaments flare
+  grows ×1.35 while the camera FOV narrows 40 → 32 (dolly-zoom feel), the glass core shrinks and glows and filaments flare
   (0.5). A CSS-only caption fades in at mid-scroll. Reduced motion keeps the cut and no opening.
 - **Mind modes**: Calm (default), Focus (half flow, tighter shell, cooler steel, filaments 0.25), Bright (more
-  signal, sparks ×1.4, nucleus emissive 0.12). Damped uniforms, no rebuild; saved in localStorage `nova-mode`.
+  signal, sparks ×1.4, more inner glow). Damped uniforms, no rebuild; saved in localStorage `nova-mode`.
 - **Bokeh** (high only): near particles grow ×1.6 and flatten into soft discs.
 - **Sparks**: a second `Points` layer on crossing orbits. **Core**: an additive glow quad.
 - **Colour**: graphite/silver particles. Noise peaks, cursor highlights and ripples light up in signal yellow,
@@ -81,12 +77,28 @@ All copy lives in `src/app/page.tsx`, `src/components/ChatDemo.tsx` and `src/com
 - **DOM ↔ 3D bridge**: a mutable signal object (`src/lib/orb-signal.ts`) read inside `useFrame`, with no React
   renders and no allocations per frame.
 
+### The look (visual redesign)
+The mind is now a **dark glass core** (radius 0.6, custom shader: opaque near-black body, thin-film iridescent rim,
+two studio glints, and gold light veins inside, made from ridged noise sampled along the refracted view ray) inside
+the particle shell. Around it run **light streams**: comet trails of points on tilted, precessing loops with a bright
+head. Behind it, one camera-facing **halo** quad draws the volumetric glow, light rays, a three-line circular
+**voice waveform** and **sound rings** that travel inward while Nova listens and outward while it speaks. A
+**depth dust** field outside the scroll root parallaxes against the cursor and the scroll. While listening, latitude
+bands run over the shell like an audio waveform. The pearl nucleus, `RoomEnvironment` and PMREM are gone.
+**Chapters**: three palettes (key / light / accent) are blended in JS and shared by every material:
+*listens* (hero and typing) = gold and champagne, rings move in; *thinks* (the open disc at mid-scroll and while
+the chat is waiting) = ice blue and violet, spiral arms in the disc, neural filaments at full strength, stronger rays,
+the glass shrinks; *speaks* (beside the chat and while an answer streams) = signal amber, rings move out, hot veins.
+**Noise** is one 32³ RGBA `Data3DTexture` of tileable value noise built in JS. Every shader reads it with
+`texture()` instead of inline simplex noise, so shaders compile fast on ANGLE/D3D11 (cold reveal ≈ 2.3 s after
+load on the high tier with an AMD iGPU, down from ≈ 4.9 s). The poster SVG mirrors the gold rings and the dark glass core.
+
 ### Quality tiers (decided before the Canvas exists, `src/lib/quality.ts`)
-| tier | particles | sparks | DPR cap | antialias | nucleus | filaments | bokeh |
-|---|---|---|---|---|---|---|---|
-| high | 60 000 | 900 | 2 | yes | yes | 160 | yes |
-| medium | 26 000 | 500 | 1.5 | yes | yes | 90 | no |
-| low | 9 000 | 220 | 1 | no | no | 0 | no |
+| tier | particles | streams × points | dust | sparks | DPR cap | antialias | glass segs | filaments | rays | bokeh |
+|---|---|---|---|---|---|---|---|---|---|---|
+| high | 44 000 | 36 × 560 | 2 400 | 900 | 2 | yes | 96 | 220 | yes | yes |
+| medium | 20 000 | 22 × 380 | 1 200 | 500 | 1.5 | yes | 64 | 120 | yes | no |
+| low | 8 000 | 12 × 240 | 400 | 220 | 1 | no | 40 | 0 | no | no |
 
 The intro and the scroll moment run on every tier.
 
@@ -101,8 +113,8 @@ PowerVR → at most medium. Touch or ≤ 4 cores → medium. Save-data, ≤ 2 co
 - Adaptive DPR (`AdaptiveDpr` in `engine.ts`): it is fed only consecutive frames, lowers the DPR when frames slow down,
   raises it after 2 s of headroom and stops raising after two bounces. drei's `PerformanceMonitor` is not used,
   because it reads render-on-demand gaps as slow frames.
-- Warm-up: the nucleus environment (PMREM) and `gl.compileAsync(scene, camera)` run behind the code-drawn SVG poster
-  (which mirrors the nucleus and filaments), and the canvas fades in only when ready. The loop stays continuous only
+- Warm-up: `gl.compileAsync(scene, camera)` runs behind the code-drawn SVG poster
+  (which mirrors the glass core, rings and filaments), and the canvas fades in only when ready. The loop stays continuous only
   while the intro, the scroll opening, the FOV or a mode change is still settling.
 - 3D chunk (three + r3f) loads via `next/dynamic(..., { ssr: false })`, only after window `load` + an idle
   callback (never during hydration, shared helper `src/lib/after-idle.ts`) and never on software renderers. Particle
@@ -160,7 +172,7 @@ real spaces, so they read as normal sentences.
 
 ## 8. Assets & licences
 - 3D, poster, favicon, apple icon, OG/Twitter images: all made in code (GLSL, SVG, `next/og`).
-- 3D simplex noise adapted from webgl-noise (MIT), credited in CREDITS.md.
+- Noise is a code-generated value-noise texture (no third-party noise code any more).
 - Fonts: Archivo, Martian Mono (OFL). Libraries: next, react, three, @react-three/fiber (MIT).
 - No runtime third-party requests.
 

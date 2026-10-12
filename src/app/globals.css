@@ -591,7 +591,7 @@ html:not(.reduce-motion) .menu-panel[data-open] {
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(60% 55% at 72% 50%, rgb(200 203 210 / 0.12), transparent 70%),
+    radial-gradient(60% 55% at 72% 50%, rgb(255 184 40 / 0.08), transparent 70%),
     radial-gradient(40% 40% at 15% 90%, rgb(255 214 10 / 0.07), transparent 70%);
 }
 
