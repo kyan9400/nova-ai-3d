@@ -2089,3 +2089,13 @@ html:not(.reduce-motion) .lost__orbit i {
 .lost .lede {
   margin: 0 auto var(--s-6);
 }
+
+/* Phones: the orb sits right behind the hero eyebrow, so give it a dark pill to stay readable */
+@media (max-width: 640px) {
+  .hero__inner > .eyebrow {
+    width: fit-content;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(10, 10, 11, 0.78);
+  }
+}
