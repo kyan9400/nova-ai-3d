@@ -18,4 +18,7 @@ if (!existsSync("out")) {
   process.exit(1);
 }
 writeFileSync("out/.nojekyll", "");
+// the gh-pages branch is a built static copy: tell Vercel's Git integration not to try to deploy it
+writeFileSync("out/vercel.json", JSON.stringify({ git: { deploymentEnabled: false } }) + "
+");
 console.log("build:pages: out/ is ready for GitHub Pages (base path /nova-ai-3d)");
