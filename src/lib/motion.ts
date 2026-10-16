@@ -1,9 +1,9 @@
 "use client";
 
 /*
-  Motion preference. The OS "reduce motion" setting is respected by default, but plenty of
-  Windows users switch animations off for speed rather than comfort — so visitors can turn
-  full motion back on. The choice is remembered; ?motion=full|reduced overrides it.
+  Motion preference. Every visit starts in full motion (the 3D is the point of the site); visitors
+  who prefer calm can switch to reduced motion with the toggle. The choice is remembered;
+  ?motion=full|reduced overrides it.
 */
 import { useSyncExternalStore } from "react";
 
@@ -24,13 +24,8 @@ function readChoice(): Choice | null {
   }
 }
 
-function systemReduced() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 function compute(): boolean {
-  const choice = readChoice();
-  return choice === "full" ? false : choice === "reduced" ? true : systemReduced();
+  return readChoice() === "reduced";
 }
 
 function emit() {
@@ -41,11 +36,8 @@ function emit() {
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-  mq.addEventListener("change", emit);
   return () => {
     listeners.delete(listener);
-    mq.removeEventListener("change", emit);
   };
 }
 
