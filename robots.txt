@@ -1,0 +1,4 @@
+User-Agent: *
+Allow: /
+
+Sitemap: https://nova-ai-3d-xi.vercel.app/sitemap.xml
