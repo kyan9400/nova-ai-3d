@@ -17,6 +17,8 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // the footer's portfolio link stays on github.io in the Pages mirror
+  env: { NEXT_PUBLIC_PORTFOLIO_URL: isPages ? "https://kyan9400.github.io/alhassan_portfolio/" : "https://alhassan-portfolio-sigma.vercel.app" },
   ...(isPages
     ? {
         // Static export: no server, so no custom headers (Pages can't send them anyway).

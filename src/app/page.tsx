@@ -405,7 +405,7 @@ export default function Home() {
               </a>
             </li>
             <li>
-              <a href="https://alhassan-portfolio-sigma.vercel.app" target="_blank" rel="noopener noreferrer">
+              <a href={process.env.NEXT_PUBLIC_PORTFOLIO_URL ?? "https://alhassan-portfolio-sigma.vercel.app"} target="_blank" rel="noopener noreferrer">
                 Portfolio
               </a>
             </li>
